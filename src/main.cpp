@@ -5,16 +5,17 @@
 #include <string_view>
 #include "inode.h"
 #include "path.h"
+#include <fmt/core.h>
 using namespace std;
 
-void startover( ){
+void startOver( ){
     for (int i = 0; i < 16; ++i) {
         bitmap[i] = UINT64_MAX;
     }
     bitmap[16] = 0x7FFF;
     DISK.seekp(FREEBLOCKS);
     DISK.write((char *)bitmap, sizeof(bitmap));
-    /*inodes[0].i_size = 2;
+    inodes[0].i_size = 2;
     inodes[0].i_zone[0] = ROOTDIR;
     inodes[0].i_mode |= IS_DIRECTORY;
     DISK.seekp(INDEXNODE);
@@ -28,41 +29,50 @@ void startover( ){
     DISK.seekp(32 - 4 - 2, ios::cur);
     DISK.write((char *)&temp, sizeof(int));
     DISK.write("..", 3);
-    DISK.seekp(32 - 4 - 3, ios::cur);*/
+    DISK.seekp(32 - 4 - 3, ios::cur);
 }
 
 int main() {
-//    startover();
+//    startOver();
 //    return 0;
+    DISK.seekg(0);
+    cout << (void *)startPos << endl;
+    DISK.read(startPos, 100<<20);
 
-    cout << sizeof(inode) << endl;
 
-    DISK.seekg(INDEXNODE);
-    for (int i = 0; i < INODENUM; ++i) {
-        DISK.read((char *)&inodes[i], sizeof(inode));
+    /*DISK.seekg(INDEXNODE);
+    for (auto & i : inodes) {
+        DISK.read((char *)&i, sizeof(inode));
     }
 
     DISK.seekg(FREEBLOCKS);
     DISK.read((char *)bitmap, sizeof(bitmap));
 
-//    cout << getNewEmptyBlockNo();
-//    return 0;
+    cout << getNewEmptyBlockNo();
+    return 0;*/
 
 
 
     path currDir;
     string cmdline;
-    cout << "simdisk " << currDir.dir() << ">" ;
+    cout << inodes << endl;
+//    cout << inodes[0]
+
+    cout << inodes[0].i_zone << endl;
+    cout << &inodes[0].i_zone[0] << endl;
+    cout << inodes[0].i_zone[1] << endl;
+//    cout << "simdisk " << currDir.dir() << ">" ;
+    fmt::print("simdisk {}>", currDir.dir());
     while (getline(cin, cmdline)) {
         auto cmds = split(cmdline);
         if (cmds.empty()) {
-            cout << "simdisk " << currDir.dir() << ">" ;
+            fmt::print("simdisk {}>", currDir.dir());
             continue;
         }
         if (cmds[0] == "cd") {
             if (cmds.size() != 2){
                 cerr << "Usage: cd <dir>\n";
-                cout << "simdisk " << currDir.dir() << ">" ;
+                fmt::print("simdisk {}>", currDir.dir());
                 continue;
             }
             auto dirs = split(cmds[1], std::regex("[^\\/]+"));
@@ -87,8 +97,8 @@ int main() {
 
         if (cmds[0] == "ls") {
             auto dirs = currDir.list();
-            for (auto &[_, p] : dirs) {
-                cout << p << endl;
+            for (auto &p : dirs) {
+                cout << p->name << endl;
             }
         }
 
@@ -97,16 +107,24 @@ int main() {
         }
 //        printf("simdisk %s>", currDir.dir());
 
-        DISK.seekp(FREEBLOCKS);
-        DISK.write((char *)bitmap, sizeof(bitmap));
-        DISK.seekp(INDEXNODE);
-        for (int i = 0; i < INODENUM; ++i)
-            DISK.write((char *)&inodes[i], sizeof(inode));
+        if (cmds[0] == "rm") {
+            if (cmds.size() != 2) {
+                cerr << "Usage: rm <dir>\n";
+                fmt::print("simdisk {}>", currDir.dir());
+                continue;
+            }
+            currDir.remove_dir(cmds[1]);
 
+        }
 
-        cout << "simdisk " << currDir.dir() << ">" ;
+        if (cmds[0] == "exit") {
+            break;
+        }
 
+        fmt::print("simdisk {}>", currDir.dir());
     }
+    DISK.seekp(0);
+    DISK.write(startPos, 100<<20);
 
     return 0;
 }

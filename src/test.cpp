@@ -3,13 +3,13 @@
 //
 
 #include <iostream>
-#include <bitset>
-#include <string>
-#include <cstring>
-
+#include <cstdlib>
+#include "inode.h"
 using namespace std;
 
 int main() {
-    throw std::bad_alloc();
-
+    cout << sizeof(inode) << endl;
+    void *startPos = malloc(100<<20);
+    cout << sizeof(startPos) << endl;
+    return 0;
 }
