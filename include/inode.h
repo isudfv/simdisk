@@ -31,8 +31,10 @@ struct inode{
     uint16_t i_uid;
     uint32_t i_size;
     uint32_t i_time;
-    uint32_t i_zone[14];
+    uint32_t i_zone[13];
 };
+
+using inode_t = uint32_t;
 
 const uint INODENUM = (1<<20) / (sizeof(inode));
 
@@ -40,18 +42,24 @@ const uint INODENUM = (1<<20) / (sizeof(inode));
 inode * const inodes = (inode *)(startPos + INDEXNODE);
 
 struct dir_entry{
-    uint inode_id;
+    inode_t inode_n;
     //only support file name for 28 characters
-    char name[32-sizeof(int)];
+    char name[32-sizeof(int)]{};
+
+    dir_entry(inode_t n, const char *dest) : inode_n(n) {
+        strcpy(name, dest);
+    }
+
+    ~dir_entry()= default;
 };
 
 const uint BITMAPNUM = 1600;
 
 uint64_t * const bitmap = (uint64_t *)(startPos + FREEBLOCKS);
 
-inline std::fstream DISK("../disk_inode _copy", std::ios::in | std::ios::out | std::ios::binary);
+inline std::fstream DISK("../disk_inode_copy", std::ios::in | std::ios::out | std::ios::binary);
 
-uint getNewInode() {
+inode_t getNewInode() {
     for (uint i = 0; i < INODENUM; ++i) {
         if (inodes[i].i_size == 0)
             return i;
@@ -65,7 +73,7 @@ uint32_t getNewEmptyBlockNo() {
     const int bitInWord = ffsll(~bitmap[i]);
     if (bitInWord != 0)
         bitmap[i] |= (1 << (bitInWord - 1));
-    const uint32_t firstZeroBit = bitInWord ? i * sizeof(*bitmap) * 8 + bitInWord : 0;
+    const uint32_t firstZeroBit = bitInWord ? i * sizeof(*bitmap) * 8 + bitInWord - 1 : -1;
     return firstZeroBit ;
 }
 

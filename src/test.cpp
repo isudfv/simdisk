@@ -10,6 +10,6 @@ using namespace std;
 int main() {
     cout << sizeof(inode) << endl;
     void *startPos = malloc(100<<20);
-    cout << sizeof(startPos) << endl;
+    cout << sizeof(dir_entry) << endl;
     return 0;
 }

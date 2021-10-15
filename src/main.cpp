@@ -14,13 +14,17 @@ void startOver( ){
     }
     bitmap[16] = 0x7FFF;
     DISK.seekp(FREEBLOCKS);
-    DISK.write((char *)bitmap, sizeof(bitmap));
+    DISK.write((char *)bitmap, sizeof(bitmap[0]) * BITMAPNUM);
+    for (int i = 0; i < INODENUM; ++i) {
+        memset(&inodes[i], 0, sizeof(inodes[i]));
+    }
+    DISK.seekp(INDEXNODE);
+    DISK.write((char *)inodes, sizeof(inodes[0]) * 1600);
     inodes[0].i_size = 2;
-    inodes[0].i_zone[0] = ROOTDIR;
+    inodes[0].i_zone[0] = ROOTDIR / 1024;
     inodes[0].i_mode |= IS_DIRECTORY;
     DISK.seekp(INDEXNODE);
     DISK.write((char *)&inodes[0], sizeof(inode));
-
 
     DISK.seekp(ROOTDIR);
     int temp = 0;
@@ -125,6 +129,7 @@ int main() {
     }
     DISK.seekp(0);
     DISK.write(startPos, 100<<20);
+//    cout << DISK.tellp() << endl;
 
     return 0;
 }
