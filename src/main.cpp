@@ -1,12 +1,16 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include "string.h"
 #include <string_view>
 #include "inode.h"
 #include "path.h"
 #include <fmt/core.h>
+#include <fmt/chrono.h>
+#include <chrono>
+#include <thread>
 using namespace std;
+
+std::mutex locker;
 
 void startOver( ){
     for (int i = 0; i < 16; ++i) {
@@ -39,6 +43,7 @@ void startOver( ){
 int main() {
 //    startOver();
 //    return 0;
+    memset(startPos, 0, 100<<20);
     DISK.seekg(0);
     cout << (void *)startPos << endl;
     DISK.read(startPos, 100<<20);
@@ -59,24 +64,28 @@ int main() {
 
     path currDir;
     string cmdline;
-    cout << inodes << endl;
-//    cout << inodes[0]
 
-    cout << inodes[0].i_zone << endl;
-    cout << &inodes[0].i_zone[0] << endl;
-    cout << inodes[0].i_zone[1] << endl;
+    std::thread writeIntoDisk([](){
+        locker.lock();
+        while (true){
+            locker.lock();
+            DISK.seekp(0);
+            DISK.write(startPos, 100<<20);
+        }
+    });
+    writeIntoDisk.detach();
 //    cout << "simdisk " << currDir.dir() << ">" ;
     fmt::print("simdisk {}>", currDir.dir());
     while (getline(cin, cmdline)) {
         auto cmds = split(cmdline);
         if (cmds.empty()) {
-            fmt::print("simdisk {}>", currDir.dir());
+            goto out;
             continue;
         }
         if (cmds[0] == "cd") {
             if (cmds.size() != 2){
                 cerr << "Usage: cd <dir>\n";
-                fmt::print("simdisk {}>", currDir.dir());
+                goto out;
                 continue;
             }
             auto dirs = split(cmds[1], std::regex("[^\\/]+"));
@@ -87,48 +96,71 @@ int main() {
 
             bool reachDestDir = true;
             for (auto &p : dirs) {
-                if (destDir.find(p))
+                if (destDir.find(p) != -1)
                     destDir = destDir.findDir(p);
                 else{
                     cerr << "no dir named \"" << p << "\"\n";
-                    reachDestDir = false;
-                    break;
+                    goto out;
                 }
             }
-            if (reachDestDir)
-                currDir = destDir;
+            currDir = destDir;
         }
 
-        if (cmds[0] == "ls") {
+        else if (cmds[0] == "ls") {
             auto dirs = currDir.list();
             for (auto &p : dirs) {
                 cout << p->name << endl;
             }
         }
 
-        if (cmds[0] == "mkdir") {
+        else if (cmds[0] == "mkdir") {
             currDir.create_dir(cmds[1]);
         }
 //        printf("simdisk %s>", currDir.dir());
 
-        if (cmds[0] == "rm") {
+        else if (cmds[0] == "newfile") {
+            if (cmds.size() == 2)
+                cmds.emplace_back();
+            if (cmds.size() != 3) {
+                cerr << "Usage newfile <file> \"content\"\n";
+                goto out;
+            }
+            currDir.create_file(cmds[1], cmds[2]);
+        }
+
+        else if (cmds[0] == "cat") {
+            if (cmds.size() != 2) {
+                cerr << "Usage cat <file>\n";
+                goto out;
+            }
+            currDir.show_content(cmds[1]);
+        }
+
+        else if (cmds[0] == "rm") {
             if (cmds.size() != 2) {
                 cerr << "Usage: rm <dir>\n";
-                fmt::print("simdisk {}>", currDir.dir());
+                goto out;
                 continue;
             }
             currDir.remove_dir(cmds[1]);
 
         }
 
-        if (cmds[0] == "exit") {
+        else if (cmds[0] == "exit") {
             break;
         }
 
+        else
+            fmt::print("Unknown command \"{}\"\n", cmds[0]);
+
+        out:
+        locker.unlock();
         fmt::print("simdisk {}>", currDir.dir());
     }
-    DISK.seekp(0);
-    DISK.write(startPos, 100<<20);
+//    auto startTime = chrono::high_resolution_clock::now();
+
+//    auto endTime = chrono::high_resolution_clock::now();
+//    fmt::print("writing total time {}", chrono::duration_cast<chrono::milliseconds>(endTime - startTime));
 //    cout << DISK.tellp() << endl;
 
     return 0;

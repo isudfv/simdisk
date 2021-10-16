@@ -4,10 +4,12 @@
 
 #ifndef SIMDISK_PATH_H
 #define SIMDISK_PATH_H
-#include <iostream>
-#include <fstream>
-#include <string_view>
 #include "inode.h"
+#include <fstream>
+#include <iostream>
+#include <string_view>
+#include <algorithm>
+#include <vector>
 class path{
 public:
     path(): name("/"), inode_n(0) {
@@ -52,11 +54,13 @@ public:
         return all;
     }
 
-    bool find(const std::string& dest) const {
+    inode_t find(const std::string& dest) const {
         auto all = list();
-        return std::any_of(std::begin(all), std::end(all), [&dest](auto &p){
-            return p->name == dest;
-        });
+        for (const auto &item : all) {
+            if (item->name == dest)
+                return item->inode_n;
+        }
+        return -1;
     }
 
     path findDir(const std::string &dest) {
@@ -81,12 +85,14 @@ public:
             }
     }
 
+
+
     path operator / (const std::string &dest) {
         return findDir(dest);
     }
 
     inode_t create_dir_entry(const std::string& dest, inode_t dest_inode = -1) {
-        if (find(dest)){
+        if (find(dest) != -1){
             std::cerr << "dir already exists\n";
             return -1;
         }
@@ -123,32 +129,58 @@ public:
 
     bool create_dir(const std::string& dest) {
         auto dest_inode = create_dir_entry(dest);
+        if (dest_inode == -1) {
+            return false;
+        }
         path sub = *this / dest;
 //        std::cout << "Here: " << inode_n << " " << "Sub: " << sub.inode_n << std::endl;
         sub.create_dir_entry(".", dest_inode);
         sub.create_dir_entry("..", inode_n);
+        return true;
     }
 
-    bool create_file(const std::string &dest, const std::string &content) {
+    bool create_file(const std::string &dest, const std::string_view content) {
         auto dest_inode = create_dir_entry(dest);
         uint current_block;
         uint pos = 0;
-        for(size_t i = 0; i < content.size(); i += BLOCKSIZE) {
+        std::vector<std::string_view> chunks;
+        for (int i = 0; i < content.size(); i += 1024)
+            chunks.push_back(content.substr(i, 1024));
+
+        for (const auto &p : chunks) {
             current_block = getNewEmptyBlockNo();
             if (current_block == -1) {
                 std::cerr << "no block available\n";
                 return false;
             }
             inodes[dest_inode].i_zone[pos++] = current_block;
-            auto seek = startPos + current_block;
-            std::string data = content.substr(i, 1024);
-            memcpy(seek, data.data(), data.size());
+            auto seek = startPos + current_block * BLOCKSIZE;
+            memcpy(seek, p.data(), p.size());
+            inodes[dest_inode].i_size += p.size();
         }
         return true;
     }
 
-    bool remove_dir (std::string& dest) {
-        if (!find(dest)) {
+    bool show_content(const std::string &dest) {
+        inode_t dest_inode = find(dest);
+        if (dest_inode == -1) {
+            std::cerr << "File not found\n";
+            return false;
+        }
+        std::string data;
+        data.reserve(inodes[dest_inode].i_size);
+//        auto seek = startPos +
+        for (uint i = 0, pos = 0; i < inodes[dest_inode].i_size; i += BLOCKSIZE) {
+            auto seek = startPos + inodes[dest_inode].i_zone[pos] * BLOCKSIZE;
+//            memcpy(temp.data(), seek, std::min(1024u, inodes[dest_inode].i_size - i));
+            data.append(seek, std::min(1024u, inodes[dest_inode].i_size - i));
+        }
+        std::cout << data << std::endl;
+        return true;
+    }
+
+    bool remove_dir (const std::string& dest) {
+        if (find(dest) == -1) {
             std::cerr << "dir not found\n";
             return false;
         }
@@ -158,6 +190,7 @@ public:
         inodes[inode_n].i_size --;
         auto s = find_last_dir_entry();
         std::swap(*p, *s);
+        return true;
     }
 
 private:
