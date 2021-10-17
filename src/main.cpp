@@ -8,7 +8,9 @@
 #include <fmt/chrono.h>
 #include <chrono>
 #include <thread>
+#include <filesystem>
 using namespace std;
+namespace fs = std::filesystem;
 
 std::mutex locker;
 
@@ -41,7 +43,7 @@ void startOver( ){
 }
 
 int main() {
-//    startOver();
+    startOver();
 //    return 0;
     memset(startPos, 0, 100<<20);
     DISK.seekg(0);
@@ -75,7 +77,7 @@ int main() {
     });
     writeIntoDisk.detach();
 //    cout << "simdisk " << currDir.dir() << ">" ;
-    fmt::print("simdisk {}>", currDir.dir());
+    fmt::print("simdisk {}>", currDir.name);
     while (getline(cin, cmdline)) {
         auto cmds = split(cmdline);
         if (cmds.empty()) {
@@ -88,22 +90,12 @@ int main() {
                 goto out;
                 continue;
             }
-            auto dirs = split(cmds[1], std::regex("[^\\/]+"));
-
-            path destDir;
-            if (cmds[1].front() != '/')
-                destDir = currDir;
-
-            bool reachDestDir = true;
-            for (auto &p : dirs) {
-                if (destDir.find(p) != -1)
-                    destDir = destDir.findDir(p);
-                else{
-                    cerr << "no dir named \"" << p << "\"\n";
-                    goto out;
-                }
+            auto dest = currDir.find_dest_dir(cmds[1]);
+            if (dest.inode_n == -1){
+                fmt::print("No directory named {}\n", dest.name);
             }
-            currDir = destDir;
+            else
+                currDir = dest;
         }
 
         else if (cmds[0] == "ls") {
@@ -114,7 +106,15 @@ int main() {
         }
 
         else if (cmds[0] == "mkdir") {
-            currDir.create_dir(cmds[1]);
+            auto pos = cmds[1].rfind('/') + 1;
+            auto filename = cmds[1].substr(pos);
+            cmds[1].erase(pos);
+            auto dest = currDir.find_dest_dir(cmds[1]);
+            if (dest.inode_n == -1) {
+                fmt::print("No directory named {}\n", dest.name);
+            } else {
+                dest.create_dir(filename);
+            }
         }
 //        printf("simdisk %s>", currDir.dir());
 
@@ -122,18 +122,26 @@ int main() {
             if (cmds.size() == 2)
                 cmds.emplace_back();
             if (cmds.size() != 3) {
-                cerr << "Usage newfile <file> \"content\"\n";
+                cerr << "Usage: newfile <file> \"content\"\n";
                 goto out;
             }
-            currDir.create_file(cmds[1], cmds[2]);
+            auto pos = cmds[1].rfind('/') + 1;
+            auto filename = cmds[1].substr(pos);
+            cmds[1].erase(pos);
+            auto dest = currDir.find_dest_dir(cmds[1]);
+            if (dest.inode_n == -1) {
+                fmt::print("No directory named {}\n", dest.name);
+            } else {
+                dest.create_file(filename, cmds[2]);
+            }
         }
 
         else if (cmds[0] == "cat") {
             if (cmds.size() != 2) {
-                cerr << "Usage cat <file>\n";
+                cerr << "Usage: cat <file>\n";
                 goto out;
             }
-            currDir.show_content(cmds[1]);
+            cout << currDir.get_content(cmds[1]) << endl;
         }
 
         else if (cmds[0] == "rm") {
@@ -150,12 +158,63 @@ int main() {
             break;
         }
 
+        else if (cmds[0] == "cp") {
+            if (cmds.size() != 3) {
+                cerr << "Usage: cp <dest> <src>\n";
+                goto out;
+            }
+            string content;
+            string filename;
+            if (cmds[1].starts_with("@PC:")) {
+                fs::path src(cmds[1].substr(4));
+                ifstream in(src);
+                stringstream ss;
+                ss << in.rdbuf();
+                content = ss.str();
+                filename = src.filename().string();
+            } else {
+                auto src = currDir.find_dest_dir(cmds[1]);
+                if (src.inode_n == -1) {
+                    fmt::print("{} not found\n", src.name);
+                    goto out;
+                }
+                if (!src.is_file()) {
+                    fmt::print("{} is not a file\n", src.name);
+                    goto out;
+                }
+                content = src.get_content();
+                filename = src.filename();
+            }
+
+
+            auto dest = currDir.find_dest_dir(cmds[2]);
+            if (dest.inode_n == -1) {
+                if (cmds[2].ends_with(dest.name)) {
+                    filename = dest.name;
+                    dest = currDir.find_dest_dir(cmds[2].substr(0, cmds[2].rfind('/') + 1));
+//                    dest.copy_file(filename, src.inode_n);
+                    dest.create_file(filename, content);
+                } else {
+                    fmt::print("{} not found\n", dest.name);
+                    goto out;
+                }
+            } else {
+                if (dest.is_file()) {
+                    fmt::print("{} already exits\n", dest.filename());
+                    goto out;
+                } else {
+                    dest.create_file(filename, content);
+//                    dest.copy_file(src.filename(), src.inode_n);
+                }
+            }
+        }
+
         else
             fmt::print("Unknown command \"{}\"\n", cmds[0]);
 
         out:
         locker.unlock();
-        fmt::print("simdisk {}>", currDir.dir());
+        fmt::print("simdisk {}>", currDir.name);
     }
 //    auto startTime = chrono::high_resolution_clock::now();
 

@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string_view>
 #include <algorithm>
+#include <utility>
 #include <vector>
 class path{
 public:
@@ -16,13 +17,27 @@ public:
 
     }
 
-    path(uint _inode, const std::string& _name): name(_name), inode_n(_inode) {
+    path(uint _inode, std::string  _name): name(std::move(_name)), inode_n(_inode) {
+        if (name.empty())
+            name.append("/");
     }
-    std::string_view dir() {
+/*    std::string_view dir() {
         std::string_view temp(name);
         if (temp != "/" && temp.ends_with("/"))
             temp.remove_suffix(1);
         return temp;
+    }*/
+
+    bool is_directory() const {
+        return inodes[inode_n].i_mode & IS_DIRECTORY;
+    }
+
+    bool is_file() const {
+        return inodes[inode_n].i_mode & IS_FILE;
+    }
+
+    std::string filename() const {
+        return name.substr(name.rfind('/') + 1);
     }
 
     std::vector<dir_entry*> list() const {
@@ -63,7 +78,7 @@ public:
         return -1;
     }
 
-    path findDir(const std::string &dest) {
+/*    path findDir(const std::string &dest) {
         auto all = list();
         for (auto &p : all)
             if (p->name == dest){
@@ -83,15 +98,46 @@ public:
                 else
                     return {p->inode_n, name + dest + "/"};
             }
-    }
+    }*/
 
+    path find_dest_dir(const std::string &dest) {
+        path curr = *this;
+        if (dest.starts_with("/"))
+            curr = path{};
+        auto dirs = split(dest, std::regex("[^\\/]+"));
+        for (const auto &p : dirs) {
+            if (!curr.is_directory()) {
+                std::cerr << curr.name << " not a directory\n";
+                break;
+            }
+            auto seek = curr.find_dir_entry(p);
+            if (seek == nullptr) {
+                return path(-1, p.data());
+            }
+            if (curr.name == "/") {
+                if (p.starts_with("."))
+                    curr =  *this;
+                else
+                    curr = {seek->inode_n, curr.name + seek->name};
+            } else {
+                if (p == ".")
+                    curr = *this;
+                else if (p == ".."){
+                    curr = {seek->inode_n, curr.name.substr(0, name.rfind('/'))};
+                }
+                else
+                    curr = {seek->inode_n, curr.name + "/" + seek->name};
+            }
+        }
+        return curr;
+    }
 
 
     path operator / (const std::string &dest) {
-        return findDir(dest);
+        return find_dest_dir(dest);
     }
 
-    inode_t create_dir_entry(const std::string& dest, inode_t dest_inode = -1) {
+    inode_t create_dir_entry(const std::string& dest, inode_t dest_inode = -1, inode_mode_t mode = IS_DIRECTORY) {
         if (find(dest) != -1){
             std::cerr << "dir already exists\n";
             return -1;
@@ -122,6 +168,7 @@ public:
         auto seek = (dir_entry *)(startPos + thisInode.i_zone[pos] * BLOCKSIZE + off);
 //        std::cout << seek << std::endl;
         *seek = newDir;
+        inodes[dest_inode].i_mode |= mode;
         thisInode.i_size ++;
 
         return dest_inode;
@@ -140,7 +187,7 @@ public:
     }
 
     bool create_file(const std::string &dest, const std::string_view content) {
-        auto dest_inode = create_dir_entry(dest);
+        auto dest_inode = create_dir_entry(dest, -1, IS_FILE);
         uint current_block;
         uint pos = 0;
         std::vector<std::string_view> chunks;
@@ -161,22 +208,53 @@ public:
         return true;
     }
 
-    bool show_content(const std::string &dest) {
+    bool copy_file(const std::string &dest, inode_t src_inode) {
+        auto dest_inode = create_dir_entry(dest, -1, IS_FILE);
+        for (uint i = 0, pos = 0; i < inodes[src_inode].i_size; i += BLOCKSIZE) {
+            auto current_block = getNewEmptyBlockNo();
+            if (current_block == -1) {
+                std::cerr << "no block available\n";
+                return false;
+            }
+            inodes[dest_inode].i_zone[pos] = current_block;
+            auto seek = startPos + current_block * BLOCKSIZE;
+            auto seek_src = startPos + inodes[src_inode].i_zone[pos++] * BLOCKSIZE;
+            auto size = std::min(inodes[src_inode].i_size - i * BLOCKSIZE, 1024u);
+            memcpy(seek, seek_src, size);
+            inodes[dest_inode].i_size += size;
+        }
+        return true;
+    }
+
+    std::string get_content(const std::string &dest) {
         inode_t dest_inode = find(dest);
         if (dest_inode == -1) {
             std::cerr << "File not found\n";
-            return false;
+            return {};
         }
         std::string data;
         data.reserve(inodes[dest_inode].i_size);
 //        auto seek = startPos +
         for (uint i = 0, pos = 0; i < inodes[dest_inode].i_size; i += BLOCKSIZE) {
-            auto seek = startPos + inodes[dest_inode].i_zone[pos] * BLOCKSIZE;
+            auto seek = startPos + inodes[dest_inode].i_zone[pos++] * BLOCKSIZE;
 //            memcpy(temp.data(), seek, std::min(1024u, inodes[dest_inode].i_size - i));
             data.append(seek, std::min(1024u, inodes[dest_inode].i_size - i));
         }
-        std::cout << data << std::endl;
-        return true;
+        return data;
+    }
+
+    std::string get_content() {
+        if (!is_file())
+            return {};
+        std::string data;
+        data.reserve(inodes[inode_n].i_size);
+        //        auto seek = startPos +
+        for (uint i = 0, pos = 0; i < inodes[inode_n].i_size; i += BLOCKSIZE) {
+            auto seek = startPos + inodes[inode_n].i_zone[pos++] * BLOCKSIZE;
+            //            memcpy(temp.data(), seek, std::min(1024u, inodes[dest_inode].i_size - i));
+            data.append(seek, std::min(1024u, inodes[inode_n].i_size - i));
+        }
+        return data;
     }
 
     bool remove_dir (const std::string& dest) {

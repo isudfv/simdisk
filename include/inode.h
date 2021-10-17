@@ -23,7 +23,9 @@ const uint INDEXNODE = FREEBLOCKS + (13 << 10);
 //inode used 1 MiB
 const uint ROOTDIR = INDEXNODE + (1 << 20);
 
-const uint16_t IS_DIRECTORY = 0x0200;
+using inode_mode_t = uint16_t;
+const inode_mode_t IS_DIRECTORY = 0x0200;
+const inode_mode_t IS_FILE = 0x0100;
 
 
 struct inode{
@@ -57,7 +59,7 @@ const uint BITMAPNUM = 1600;
 
 uint64_t * const bitmap = (uint64_t *)(startPos + FREEBLOCKS);
 
-inline std::fstream DISK("../disk_inode_copy", std::ios::in | std::ios::out | std::ios::binary);
+inline std::fstream DISK("../disk_inode_copy_copy", std::ios::in | std::ios::out | std::ios::binary);
 
 inode_t getNewInode() {
     for (uint i = 0; i < INODENUM; ++i) {
