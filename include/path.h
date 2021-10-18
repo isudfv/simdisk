@@ -17,7 +17,7 @@ public:
 
     }
 
-    path(uint _inode, std::string  _name): name(std::move(_name)), inode_n(_inode) {
+        path(uint _inode, std::string  _name): name(std::move(_name)), inode_n(_inode) {
         if (name.empty())
             name.append("/");
     }
@@ -40,17 +40,20 @@ public:
         return name.substr(name.rfind('/') + 1);
     }
 
-    std::vector<dir_entry*> list() const {
-        std::vector<dir_entry*> all;
+    std::vector<dir_entry> list() const {
+        std::vector<dir_entry> all;
 //        std::vector<std::pair<uint, std::string>> all;
         int pos = 0;
         uint destInode;
 //        DISK.seekg(inodes[inode_n].i_zone[pos++]);
 //        std::cout << inode_n << " " << &inodes[inode_n].i_zone[pos++] << std::endl;
-        auto *seek = (dir_entry *)(inodes[inode_n].i_zone[pos++] * BLOCKSIZE + startPos);
+        auto seek = (inodes[inode_n].i_zone[pos++]);
 //        std::cout << (void *)seek << std::endl;
         char temp[28];
+        DISK.seekg(seek);
         for (int i = 0; i < inodes[inode_n].i_size; ++i) {
+            dir_entry src{};
+            DISK.read((char *)&src, sizeof(dir_entry));
 //            DISK.read((char *)&destInode, sizeof(int));
 //            DISK.read(dest, 32 - 4);
 //            std::cout << *(int *)seek << std::endl;
@@ -58,12 +61,12 @@ public:
 //            dir_entry dest{};
 //            memcpy(&dest, seek, sizeof(dir_entry));
 //            std::cout << "HereHere: " << seek << std::endl;
-            all.push_back(seek++);
+            all.push_back(src);
 //            all.emplace_back(*(int *)seek, std::string((char *)seek + 4, (char *)seek + 32));
 //            seek ++;
 //            std::cout << all.back().first << " " << all.back().second << std::endl;
             if ((i+1) * sizeof(dir_entry) % BLOCKSIZE == 0)
-                seek = (dir_entry *)(inodes[inode_n].i_zone[pos++] * BLOCKSIZE + startPos);
+                seek = (inodes[inode_n].i_zone[pos++]);
         }
 //        std::cout << "END \n";
         return all;
@@ -72,8 +75,8 @@ public:
     inode_t find(const std::string& dest) const {
         auto all = list();
         for (const auto &item : all) {
-            if (item->name == dest)
-                return item->inode_n;
+            if (item.name == dest)
+                return item.inode_n;
         }
         return -1;
     }
@@ -111,22 +114,22 @@ public:
                 break;
             }
             auto seek = curr.find_dir_entry(p);
-            if (seek == nullptr) {
-                return path(-1, p.data());
+            if (seek.inode_n == -1) {
+                return path(-1, p);
             }
             if (curr.name == "/") {
                 if (p.starts_with("."))
                     curr =  *this;
                 else
-                    curr = {seek->inode_n, curr.name + seek->name};
+                    curr = {seek.inode_n, curr.name + seek.name};
             } else {
                 if (p == ".")
                     curr = *this;
                 else if (p == ".."){
-                    curr = {seek->inode_n, curr.name.substr(0, name.rfind('/'))};
+                    curr = {seek.inode_n, curr.name.substr(0, name.rfind('/'))};
                 }
                 else
-                    curr = {seek->inode_n, curr.name + "/" + seek->name};
+                    curr = {seek.inode_n, curr.name + "/" + seek.name};
             }
         }
         return curr;
@@ -153,7 +156,7 @@ public:
                 std::cerr << "no block available\n";
                 return -1;
             }
-            thisInode.i_zone[pos] = temp;
+            thisInode.i_zone[pos] = temp * BLOCKSIZE;
         }
 
         //get new inode
@@ -165,10 +168,14 @@ public:
 
         dir_entry newDir{dest_inode, dest.data()};
 
-        auto seek = (dir_entry *)(startPos + thisInode.i_zone[pos] * BLOCKSIZE + off);
+        auto seek = (thisInode.i_zone[pos] + off);
 //        std::cout << seek << std::endl;
-        *seek = newDir;
+//        *seek = newDir;
+        DISK.seekp(seek);
+        DISK.write((char *)&newDir, sizeof(newDir));
+
         inodes[dest_inode].i_mode |= mode;
+        inodes[dest_inode].i_uid = CURRUSER;
         thisInode.i_size ++;
 
         return dest_inode;
@@ -200,15 +207,17 @@ public:
                 std::cerr << "no block available\n";
                 return false;
             }
-            inodes[dest_inode].i_zone[pos++] = current_block;
-            auto seek = startPos + current_block * BLOCKSIZE;
-            memcpy(seek, p.data(), p.size());
+            inodes[dest_inode].i_zone[pos] = current_block * BLOCKSIZE;
+//            auto seek = current_block;
+//            memcpy(seek, p.data(), p.size());
+            DISK.seekp(inodes[dest_inode].i_zone[pos]);
+            DISK.write(p.data(), p.size());
             inodes[dest_inode].i_size += p.size();
         }
         return true;
     }
 
-    bool copy_file(const std::string &dest, inode_t src_inode) {
+/*    bool copy_file(const std::string &dest, inode_t src_inode) {
         auto dest_inode = create_dir_entry(dest, -1, IS_FILE);
         for (uint i = 0, pos = 0; i < inodes[src_inode].i_size; i += BLOCKSIZE) {
             auto current_block = getNewEmptyBlockNo();
@@ -216,15 +225,15 @@ public:
                 std::cerr << "no block available\n";
                 return false;
             }
-            inodes[dest_inode].i_zone[pos] = current_block;
-            auto seek = startPos + current_block * BLOCKSIZE;
+            inodes[dest_inode].i_zone[pos] = current_block * BLOCKSIZE;
+            auto seek = current_block;
             auto seek_src = startPos + inodes[src_inode].i_zone[pos++] * BLOCKSIZE;
             auto size = std::min(inodes[src_inode].i_size - i * BLOCKSIZE, 1024u);
             memcpy(seek, seek_src, size);
             inodes[dest_inode].i_size += size;
         }
         return true;
-    }
+    }*/
 
     std::string get_content(const std::string &dest) {
         inode_t dest_inode = find(dest);
@@ -232,62 +241,80 @@ public:
             std::cerr << "File not found\n";
             return {};
         }
-        std::string data;
-        data.reserve(inodes[dest_inode].i_size);
+        std::string content;
+        content.reserve(inodes[dest_inode].i_size);
 //        auto seek = startPos +
         for (uint i = 0, pos = 0; i < inodes[dest_inode].i_size; i += BLOCKSIZE) {
-            auto seek = startPos + inodes[dest_inode].i_zone[pos++] * BLOCKSIZE;
-//            memcpy(temp.data(), seek, std::min(1024u, inodes[dest_inode].i_size - i));
-            data.append(seek, std::min(1024u, inodes[dest_inode].i_size - i));
+//            auto seek = inodes[dest_inode].i_zone[pos++];
+//            memcpy(temp.content(), seek, std::min(1024u, inodes[dest_inode].i_size - i));
+            char data[BLOCKSIZE];
+            DISK.seekg(inodes[dest_inode].i_zone[pos++]);
+            DISK.read(data, BLOCKSIZE);
+            content.append(data, std::min(1024u, inodes[dest_inode].i_size - i));
         }
-        return data;
+        return content;
     }
 
     std::string get_content() {
         if (!is_file())
             return {};
-        std::string data;
-        data.reserve(inodes[inode_n].i_size);
+        std::string content;
+        content.reserve(inodes[inode_n].i_size);
         //        auto seek = startPos +
         for (uint i = 0, pos = 0; i < inodes[inode_n].i_size; i += BLOCKSIZE) {
-            auto seek = startPos + inodes[inode_n].i_zone[pos++] * BLOCKSIZE;
-            //            memcpy(temp.data(), seek, std::min(1024u, inodes[dest_inode].i_size - i));
-            data.append(seek, std::min(1024u, inodes[inode_n].i_size - i));
+//            auto seek = inodes[inode_n].i_zone[pos++];
+            char data[BLOCKSIZE];
+            DISK.seekg(inodes[inode_n].i_zone[pos++]);
+            DISK.read(data, BLOCKSIZE);
+            //            memcpy(temp.content(), seek, std::min(1024u, inodes[dest_inode].i_size - i));
+            content.append(data, std::min(1024u, inodes[inode_n].i_size - i));
         }
-        return data;
+        return content;
     }
 
     bool remove_dir (const std::string& dest) {
-        if (find(dest) == -1) {
+        auto p = find_dir_entry(dest);
+
+        if (p.inode_n == -1) {
             std::cerr << "dir not found\n";
             return false;
         }
 
-        auto p = find_dir_entry(dest);
-        memset(&inodes[p->inode_n], 0, sizeof(inode));
+        if (inodes[p.inode_n].i_mode & IS_DIRECTORY && inodes[p.inode_n].i_size > 2){
+            std::cout << "Directory not empty, please type yes: \n";
+            std::string get;
+            std::cin >> get;
+            getchar();
+            if (get != "yes")
+                return false;
+        }
+        memset(&inodes[p.inode_n], 0, sizeof(inode));
         inodes[inode_n].i_size --;
         auto s = find_last_dir_entry();
-        std::swap(*p, *s);
+        std::swap(p, s);
         return true;
     }
 
 private:
-    dir_entry* find_dir_entry(const std::string& dest) {
+    dir_entry find_dir_entry(const std::string& dest) {
         auto all = list();
         for (auto &p : all) {
-            if (p->name == dest)
+            if (p.name == dest)
                 return p;
         }
-        return nullptr;
+        return {UINT32_MAX, ""};
     }
 
-    dir_entry* find_last_dir_entry() {
+    dir_entry find_last_dir_entry() {
         uint pos = inodes[inode_n].i_size * sizeof(dir_entry) / BLOCKSIZE;
         uint off = inodes[inode_n].i_size * sizeof(dir_entry) % BLOCKSIZE;
         if (off == 0 && pos != 0)
             pos -= 1, off = BLOCKSIZE - sizeof(dir_entry);
-        auto seek = (dir_entry *)(startPos + inodes[inode_n].i_zone[pos] * BLOCKSIZE + off);
-        return seek;
+        auto seek = (inodes[inode_n].i_zone[pos] + off);
+        dir_entry src{};
+        DISK.seekg(seek);
+        DISK.read((char *)&src, sizeof(dir_entry));
+        return src;
     }
 
 public:

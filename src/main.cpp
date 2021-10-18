@@ -9,10 +9,11 @@
 #include <chrono>
 #include <thread>
 #include <filesystem>
+#include "users.h"
 using namespace std;
 namespace fs = std::filesystem;
 
-std::mutex locker;
+//std::mutex locker;
 
 void startOver( ){
     for (int i = 0; i < 16; ++i) {
@@ -21,14 +22,15 @@ void startOver( ){
     bitmap[16] = 0x7FFF;
     DISK.seekp(FREEBLOCKS);
     DISK.write((char *)bitmap, sizeof(bitmap[0]) * BITMAPNUM);
-    for (int i = 0; i < INODENUM; ++i) {
-        memset(&inodes[i], 0, sizeof(inodes[i]));
+    for (auto & inode : inodes) {
+        memset(&inode, 0, sizeof(inode));
     }
     DISK.seekp(INDEXNODE);
     DISK.write((char *)inodes, sizeof(inodes[0]) * 1600);
     inodes[0].i_size = 2;
-    inodes[0].i_zone[0] = ROOTDIR / 1024;
+    inodes[0].i_zone[0] = ROOTDIR;
     inodes[0].i_mode |= IS_DIRECTORY;
+    inodes[0].i_uid = 0;
     DISK.seekp(INDEXNODE);
     DISK.write((char *)&inodes[0], sizeof(inode));
 
@@ -40,34 +42,58 @@ void startOver( ){
     DISK.write((char *)&temp, sizeof(int));
     DISK.write("..", 3);
     DISK.seekp(32 - 4 - 3, ios::cur);
+
+    char rootname[24] = "root";
+    uint64_t roothash = hash<string>{}("123");
+    uint16_t rootuid = 0;
+    user rootuser{rootuid, roothash, "root"};
+    DISK.seekp(USERS);
+    DISK.write((char *)&rootuser, sizeof(rootuser));
+    uint16_t usernum = 1;
+    DISK.write((char *)&usernum, sizeof(usernum));
 }
 
 int main() {
     startOver();
 //    return 0;
-    memset(startPos, 0, 100<<20);
-    DISK.seekg(0);
-    cout << (void *)startPos << endl;
-    DISK.read(startPos, 100<<20);
 
 
-    /*DISK.seekg(INDEXNODE);
-    for (auto & i : inodes) {
-        DISK.read((char *)&i, sizeof(inode));
-    }
+    DISK.seekg(INDEXNODE);
+    DISK.read((char *)&inodes, sizeof(inodes));
 
     DISK.seekg(FREEBLOCKS);
     DISK.read((char *)bitmap, sizeof(bitmap));
 
-    cout << getNewEmptyBlockNo();
-    return 0;*/
+    DISK.seekg(USERS);
+    DISK.read((char *)users, sizeof(users));
 
+    char username[24];
+    printf("Log in as: ");
+    while (cin >> username) {
+        for (auto & user : users) {
+            if (user.uid == UINT16_MAX) continue;
+            if (strcmp(username, user.name) == 0) {
+                printf("password: ");
+                string password;
+                while (cin >> password) {
+                    if (hash<string>{}(password) == user.password) {
+                        goto start;
+                    } else {
+                        printf("wrong password, please try again: ");
+                    }
+                }
+            }
+        }
+        printf("user not found, please try again: ");
+    }
 
+    start:
+    cin.ignore(std::numeric_limits< streamsize >::max(), '\n');
 
     path currDir;
     string cmdline;
 
-    std::thread writeIntoDisk([](){
+    /*std::thread writeIntoDisk([](){
         locker.lock();
         while (true){
             locker.lock();
@@ -75,12 +101,26 @@ int main() {
             DISK.write(startPos, 100<<20);
         }
     });
-    writeIntoDisk.detach();
+    writeIntoDisk.detach();*/
 //    cout << "simdisk " << currDir.dir() << ">" ;
-    fmt::print("simdisk {}>", currDir.name);
+
+    auto writeIntoDisk = []() {
+        DISK.seekp(INDEXNODE);
+        DISK.write((char *)&inodes, sizeof(inodes));
+
+        DISK.seekp(FREEBLOCKS);
+        DISK.write((char *)bitmap, sizeof(bitmap));
+
+        DISK.seekp(USERS);
+        DISK.write((char *)users, sizeof(users));
+    };
+
+
+    fmt::print("{}@simdisk:{}>", username, currDir.name);
     while (getline(cin, cmdline)) {
         auto cmds = split(cmdline);
         if (cmds.empty()) {
+            printf("\n");
             goto out;
             continue;
         }
@@ -101,7 +141,7 @@ int main() {
         else if (cmds[0] == "ls") {
             auto dirs = currDir.list();
             for (auto &p : dirs) {
-                cout << p->name << endl;
+                cout << p.name << endl;
             }
         }
 
@@ -141,7 +181,13 @@ int main() {
                 cerr << "Usage: cat <file>\n";
                 goto out;
             }
-            cout << currDir.get_content(cmds[1]) << endl;
+            auto dest = currDir.find_dest_dir(cmds[1]);
+            if (dest.inode_n == -1) {
+                fmt::print("No directory named {}\n", dest.name);
+            } else if (!dest.is_file()){
+                fmt::print("{} is not a file\n", dest.filename());
+            } else
+                cout << dest.get_content() << endl;
         }
 
         else if (cmds[0] == "rm") {
@@ -150,7 +196,16 @@ int main() {
                 goto out;
                 continue;
             }
-            currDir.remove_dir(cmds[1]);
+
+            auto pos = cmds[1].rfind('/') + 1;
+            auto filename = cmds[1].substr(pos);
+            cmds[1].erase(pos);
+            auto dest = currDir.find_dest_dir(cmds[1]);
+            if (dest.inode_n == -1) {
+                fmt::print("No directory named {}\n", dest.name);
+            } else {
+                dest.remove_dir(filename);
+            }
 
         }
 
@@ -209,12 +264,25 @@ int main() {
             }
         }
 
+        /*else if (cmds[0] == "addusr") {
+            auto finduser = []() {
+                for (int i = 0; i < USERNUM)
+            };
+            fmt::print("password: ");
+            string password;
+            cin >> password;
+
+
+        }*/
+
         else
             fmt::print("Unknown command \"{}\"\n", cmds[0]);
 
         out:
-        locker.unlock();
-        fmt::print("simdisk {}>", currDir.name);
+//        locker.unlock();
+//        fmt::print("simdisk {}>", currDir.name);
+        writeIntoDisk();
+        fmt::print("{}@simdisk:{}>", username, currDir.name);
     }
 //    auto startTime = chrono::high_resolution_clock::now();
 
