@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include <fmt/core.h>
+#include "users.h"
 class path{
 public:
     path(): name("/"), inode_n(0) {
@@ -72,6 +74,30 @@ public:
         return all;
     }
 
+    std::vector<std::string> list(std::string_view params) {
+        std::vector<std::string> all;
+        auto entries = list();
+        for (auto &item : entries) {
+            if (item.name[0] == '.' && params.find('a') == -1)
+                continue;
+            if (params.find('l') == -1) {
+                all.emplace_back(item.name);
+            } else {
+                all.push_back(fmt::format("{}{} {:>2} {:<6} {:<6} {:>5} {} {}",
+                                          file_type(inodes[item.inode_n].i_mode),
+                                          rwx(inodes[item.inode_n].i_mode),
+                                          1,
+                                          users[inodes[item.inode_n].i_uid].name,
+                                          users[inodes[item.inode_n].i_uid].name,
+                                          inodes[item.inode_n].i_size,
+                                          time_format(inodes[item.inode_n].i_time),
+                                          item.name
+                                          ));
+            }
+        }
+        return all;
+    }
+
     inode_t find(const std::string& dest) const {
         auto all = list();
         for (const auto &item : all) {
@@ -110,7 +136,7 @@ public:
         auto dirs = split(dest, std::regex("[^\\/]+"));
         for (const auto &p : dirs) {
             if (!curr.is_directory()) {
-                std::cerr << curr.name << " not a directory\n";
+                std::cout << curr.name << " not a directory\n";
                 break;
             }
             auto seek = curr.find_dir_entry(p);
@@ -142,7 +168,7 @@ public:
 
     inode_t create_dir_entry(const std::string& dest, inode_t dest_inode = -1, inode_mode_t mode = IS_DIRECTORY) {
         if (find(dest) != -1){
-            std::cerr << "dir already exists\n";
+            std::cout << "dir already exists\n";
             return -1;
         }
         inode &thisInode = inodes[inode_n];
@@ -153,7 +179,7 @@ public:
         if (off == 0){
             auto temp = getNewEmptyBlockNo();
             if (temp == -1){
-                std::cerr << "no block available\n";
+                std::cout << "no block available\n";
                 return -1;
             }
             thisInode.i_zone[pos] = temp * BLOCKSIZE;
@@ -162,7 +188,7 @@ public:
         //get new inode
         dest_inode = dest_inode == -1 ? getNewInode() : dest_inode;
         if (dest_inode == -1) {
-            std::cerr << "no inode available\n";
+            std::cout << "no inode available\n";
             return -1;
         }
 
@@ -175,7 +201,16 @@ public:
         DISK.write((char *)&newDir, sizeof(newDir));
 
         inodes[dest_inode].i_mode |= mode;
-        inodes[dest_inode].i_uid = CURRUSER;
+        inodes[dest_inode].i_uid = curr_uid;
+        if (mode == IS_DIRECTORY){
+            inodes[dest_inode].i_mode |= (7 << 6);
+            inodes[dest_inode].i_mode |= (5 << 3);
+            inodes[dest_inode].i_mode |= (5     );
+        } else if (mode == IS_FILE) {
+            inodes[dest_inode].i_mode |= (6 << 6);
+            inodes[dest_inode].i_mode |= (4 << 3);
+            inodes[dest_inode].i_mode |= (4     );
+        }
         thisInode.i_size ++;
 
         return dest_inode;
@@ -195,6 +230,11 @@ public:
 
     bool create_file(const std::string &dest, const std::string_view content) {
         auto dest_inode = create_dir_entry(dest, -1, IS_FILE);
+
+        if (dest_inode == -1) {
+            return false;
+        }
+
         uint current_block;
         uint pos = 0;
         std::vector<std::string_view> chunks;
@@ -204,7 +244,7 @@ public:
         for (const auto &p : chunks) {
             current_block = getNewEmptyBlockNo();
             if (current_block == -1) {
-                std::cerr << "no block available\n";
+                std::cout << "no block available\n";
                 return false;
             }
             inodes[dest_inode].i_zone[pos] = current_block * BLOCKSIZE;
@@ -222,7 +262,7 @@ public:
         for (uint i = 0, pos = 0; i < inodes[src_inode].i_size; i += BLOCKSIZE) {
             auto current_block = getNewEmptyBlockNo();
             if (current_block == -1) {
-                std::cerr << "no block available\n";
+                std::cout << "no block available\n";
                 return false;
             }
             inodes[dest_inode].i_zone[pos] = current_block * BLOCKSIZE;
@@ -238,7 +278,7 @@ public:
     std::string get_content(const std::string &dest) {
         inode_t dest_inode = find(dest);
         if (dest_inode == -1) {
-            std::cerr << "File not found\n";
+            std::cout << "File not found\n";
             return {};
         }
         std::string content;
@@ -276,8 +316,13 @@ public:
         auto p = find_dir_entry(dest);
 
         if (p.inode_n == -1) {
-            std::cerr << "dir not found\n";
+            std::cout << "dir not found\n";
             return false;
+        }
+
+        if (inodes[p.inode_n].i_uid != curr_uid && curr_uid != 0 &&
+            (inodes[p.inode_n].i_mode & (2)) == 0) {
+            std::cout << "Permission denied\n";
         }
 
         if (inodes[p.inode_n].i_mode & IS_DIRECTORY && inodes[p.inode_n].i_size > 2){
@@ -291,7 +336,26 @@ public:
         memset(&inodes[p.inode_n], 0, sizeof(inode));
         inodes[inode_n].i_size --;
         auto s = find_last_dir_entry();
-        std::swap(p, s);
+
+        auto getDirentryAdd = [this, &dest]() {
+            int pos = 0;
+            auto seek = (inodes[inode_n].i_zone[pos++]);
+            DISK.seekg(seek);
+            for (int i = 0; i < inodes[inode_n].i_size; ++i) {
+                dir_entry src{};
+                auto curr_pos = DISK.tellg();
+                DISK.read((char *)&src, sizeof(dir_entry));
+                if (src.name == dest)
+                    return curr_pos;
+                if ((i+1) * sizeof(dir_entry) % BLOCKSIZE == 0)
+                    seek = (inodes[inode_n].i_zone[pos++]);
+            }
+        };
+
+        DISK.seekp(getDirentryAdd());
+        DISK.write((char *)&s, sizeof(s));
+
+
         return true;
     }
 

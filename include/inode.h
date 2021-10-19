@@ -8,6 +8,7 @@
 #include <regex>
 #include <cstdint>
 #include <fstream>
+#include <filesystem>
 
 //char * const startPos = (char *)malloc(100<<20);
 
@@ -22,9 +23,11 @@ const uint SUPERBLOCK = 0;
 //    const uint32_t USEDBLOCK = USEDINODE + 4;
 
 
-int BLOCKSIZE = 1024;
+const uint BLOCKSIZE = 1024;
 
-int SIMDISKSIZE = 100 << 20;
+const uint SIMDISKSIZE = 100 << 20;
+
+const uint BLOCKNUM = SIMDISKSIZE / BLOCKSIZE;
 
 const uint FREEBLOCKS = SUPERBLOCK + 1024;
 //bit map uses 12.5 blocks`
@@ -41,9 +44,17 @@ struct inode{
     uint16_t i_mode;
     uint16_t i_uid;
     uint32_t i_size;
+    time_t   i_time;
+    uint32_t i_zone[12];
+};
+
+/*struct inode{
+    uint16_t i_mode;
+    uint16_t i_uid;
+    uint32_t i_size;
     uint32_t i_time;
     uint32_t i_zone[13];
-};
+};*/
 
 using inode_t = uint32_t;
 
@@ -73,7 +84,9 @@ uint64_t bitmap[BITMAPNUM];
 
 inline std::fstream DISK("../disk_inode_copy_copy", std::ios::in | std::ios::out | std::ios::binary);
 
-inline uint16_t CURRUSER;
+inline uint16_t curr_uid;
+
+inline char curr_username[24];
 
 inode_t getNewInode() {
     for (uint i = 0; i < INODENUM; ++i) {
@@ -81,6 +94,13 @@ inode_t getNewInode() {
             return i;
     }
     return -1;
+}
+
+inode_t inodeNum() {
+    inode_t tot = 0;
+    for (auto &item : inodes)
+        tot += (item.i_size != 0);
+    return tot;
 }
 
 uint32_t getNewEmptyBlockNo() {
@@ -91,6 +111,17 @@ uint32_t getNewEmptyBlockNo() {
         bitmap[i] |= (1 << (bitInWord - 1));
     const uint32_t firstZeroBit = bitInWord ? i * sizeof(*bitmap) * 8 + bitInWord - 1 : -1;
     return firstZeroBit ;
+}
+
+uint32_t blockNum() {
+    uint32_t tot = 0;
+    for (auto n : bitmap) {
+        while (n != 0) {
+            n = n & (n-1);
+            tot ++;
+        }
+    }
+    return tot;
 }
 
 std::vector<std::string> split(const std::string& s,
@@ -104,6 +135,34 @@ std::vector<std::string> split(const std::string& s,
                  cmds.push_back(match[p - 1]);
              });
     return cmds;
+}
+
+char file_type(inode_mode_t p) {
+    if (p & IS_DIRECTORY) return 'd';
+    else if (p & IS_FILE) return 'f';
+    else return '-';
+}
+
+std::string rwx(inode_mode_t p) {
+    using std::filesystem::perms;
+    auto check = [p](perms bit, char c) {
+        return (p & (inode_mode_t)bit) ? c : '-';
+    };
+    return {check(perms::owner_read  , 'r'),
+            check(perms::owner_write , 'w'),
+            check(perms::owner_exec  , 'x'),
+            check(perms::group_read  , 'r'),
+            check(perms::group_write , 'w'),
+            check(perms::group_exec  , 'x'),
+            check(perms::others_read , 'r'),
+            check(perms::others_write, 'w'),
+            check(perms::others_exec , 'x')};
+}
+
+std::string time_format(time_t t) {
+    std::stringstream fmtedTime;
+    fmtedTime << std::put_time(localtime(&t), "%a %d %H:%S");
+    return fmtedTime.str();
 }
 
 #endif //SIMDISK_INODE_H

@@ -3,13 +3,20 @@
 //
 
 #include <iostream>
-#include <cstdlib>
+#include <iomanip>
+#include <ctime>
 #include "inode.h"
+#include <fmt/core.h>
+#include <fmt/chrono.h>
 using namespace std;
 
-int main() {
-    cout << sizeof(inode) << endl;
-    void *startPos = malloc(100<<20);
-    cout << sizeof(dir_entry) << endl;
-    return 0;
+int main()
+{
+//    std::locale::global(std::locale("zh_CN.utf8"));
+    std::time_t t = std::time(nullptr);
+    stringstream fmtedTime;
+    fmtedTime << put_time(localtime(&t), "%a %d %H:%S");
+    cout << fmtedTime.str();
+    cout << endl <<  sizeof(dir_entry) << endl;
+//    cout << fmt::format("{}", put_time(localtime(&t), "%a %d %H:%S"));
 }

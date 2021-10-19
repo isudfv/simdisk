@@ -17,3 +17,5 @@ add_executable(test src/test.cpp)
 
 target_link_libraries(simdisk fmt::fmt Threads::Threads)
 
+target_link_libraries(test fmt::fmt Threads::Threads)
+

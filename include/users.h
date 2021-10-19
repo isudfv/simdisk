@@ -22,5 +22,23 @@ const uint16_t USERNUM = 4;
 
 user users[USERNUM];
 
+auto userNotFull () {
+    return std::any_of(std::begin(users), std::end(users), [](auto &p){
+        return p.password == 0;
+    });
+};
 
+auto userExists (const std::string &name) {
+    return std::any_of(std::begin(users), std::end(users), [&name](auto &p){
+        return p.name == name;
+    });
+};
+
+uint16_t userNum () {
+    uint16_t tot = 0;
+    for (auto &item : users) {
+        tot += (item.password != 0);
+    }
+    return tot;
+}
 #endif //SIMDISK_USERS_H
