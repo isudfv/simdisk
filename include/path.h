@@ -202,6 +202,7 @@ public:
 
         inodes[dest_inode].i_mode |= mode;
         inodes[dest_inode].i_uid = curr_uid;
+        inodes[dest_inode].i_time = std::time(nullptr);
         if (mode == IS_DIRECTORY){
             inodes[dest_inode].i_mode |= (7 << 6);
             inodes[dest_inode].i_mode |= (5 << 3);
@@ -323,6 +324,7 @@ public:
         if (inodes[p.inode_n].i_uid != curr_uid && curr_uid != 0 &&
             (inodes[p.inode_n].i_mode & (2)) == 0) {
             std::cout << "Permission denied\n";
+            return false;
         }
 
         if (inodes[p.inode_n].i_mode & IS_DIRECTORY && inodes[p.inode_n].i_size > 2){
