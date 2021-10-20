@@ -12,10 +12,19 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 
 add_executable(simdisk src/main.cpp)
 #set_target_properties(simdisk PROPERTIES COMPILE_OPTIONS "-m32")
-add_executable(test src/test.cpp)
+#add_executable(test src/test.cpp)
+#
+#add_executable(server src/server.c)
+#
+#add_executable(client src/client.c)
+
+add_executable(init src/init.cpp)
 #set_target_properties(test PROPERTIES COMPILE_OPTIONS "-m32" LINK_FLAGS "-m32")
 
 target_link_libraries(simdisk fmt::fmt Threads::Threads)
 
-target_link_libraries(test fmt::fmt Threads::Threads)
+#target_link_libraries(test fmt::fmt Threads::Threads)
+
+target_link_libraries(init fmt::fmt)
+
 

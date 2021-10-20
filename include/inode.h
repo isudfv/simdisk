@@ -82,7 +82,7 @@ uint64_t bitmap[BITMAPNUM];
 
 //uint64_t * const bitmap = (uint64_t *)(startPos + FREEBLOCKS);
 
-inline std::fstream DISK("../disk_inode_copy_copy", std::ios::in | std::ios::out | std::ios::binary);
+inline std::fstream DISK("./disk", std::ios::in | std::ios::out | std::ios::binary);
 
 inline uint16_t curr_uid;
 
@@ -161,7 +161,7 @@ std::string rwx(inode_mode_t p) {
 
 std::string time_format(time_t t) {
     std::stringstream fmtedTime;
-    fmtedTime << std::put_time(localtime(&t), "%a %d %H:%S");
+    fmtedTime << std::put_time(localtime(&t), "%a %d %H:%M");
     return fmtedTime.str();
 }
 

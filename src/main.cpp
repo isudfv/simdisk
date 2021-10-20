@@ -15,48 +15,11 @@ namespace fs = std::filesystem;
 
 //std::mutex locker;
 
-void startOver( ){
-    for (int i = 0; i < 16; ++i) {
-        bitmap[i] = UINT64_MAX;
-    }
-    bitmap[16] = 0x7FFF;
-    DISK.seekp(FREEBLOCKS);
-    DISK.write((char *)bitmap, sizeof(bitmap[0]) * BITMAPNUM);
-    for (auto & inode : inodes) {
-        memset(&inode, 0, sizeof(inode));
-    }
-    DISK.seekp(INDEXNODE);
-    DISK.write((char *)inodes, sizeof(inodes[0]) * 1600);
-    inodes[0].i_size = 2;
-    inodes[0].i_zone[0] = ROOTDIR;
-    inodes[0].i_mode |= IS_DIRECTORY;
-    inodes[0].i_uid = 0;
-    DISK.seekp(INDEXNODE);
-    DISK.write((char *)&inodes[0], sizeof(inode));
 
-    DISK.seekp(ROOTDIR);
-    int temp = 0;
-    DISK.write((char *)&temp, sizeof(int));
-    DISK.write(".", 2);
-    DISK.seekp(32 - 4 - 2, ios::cur);
-    DISK.write((char *)&temp, sizeof(int));
-    DISK.write("..", 3);
-    DISK.seekp(32 - 4 - 3, ios::cur);
-
-    char rootname[24] = "root";
-    uint64_t roothash = hash<string>{}("123");
-    uint16_t rootuid = 0;
-    user rootuser{rootuid, roothash, "root"};
-    DISK.seekp(USERS);
-    DISK.write((char *)&rootuser, sizeof(rootuser));
-    uint16_t usernum = 1;
-    DISK.write((char *)&usernum, sizeof(usernum));
-}
 
 int main() {
 //    startOver();
 //    return 0;
-
 
     DISK.seekg(INDEXNODE);
     DISK.read((char *)&inodes, sizeof(inodes));

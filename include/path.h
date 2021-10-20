@@ -55,6 +55,7 @@ public:
         DISK.seekg(seek);
         for (int i = 0; i < inodes[inode_n].i_size; ++i) {
             dir_entry src{};
+            DISK.tellg();
             DISK.read((char *)&src, sizeof(dir_entry));
 //            DISK.read((char *)&destInode, sizeof(int));
 //            DISK.read(dest, 32 - 4);
