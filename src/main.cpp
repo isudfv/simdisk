@@ -265,6 +265,11 @@ int main() {
 
         else if (cmds[0] == "addusr") {
 
+            if (cmds.size() != 2) {
+                cout << "Usage: addusr <usrname>\n";
+                goto out;
+            }
+
             if (userNotFull() && !userExists(cmds[1])) {
                 cout << fmt::format("password: ");
                 string password;
