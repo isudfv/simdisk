@@ -1,15 +1,18 @@
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <string_view>
 #include "inode.h"
 #include "path.h"
-#include <fmt/core.h>
-#include <fmt/chrono.h>
-#include <chrono>
-#include <thread>
-#include <filesystem>
 #include "users.h"
+#include <chrono>
+#include <filesystem>
+#include <fmt/chrono.h>
+#include <fmt/core.h>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include "ipc.h"
+#include <string_view>
+#include <sys/shm.h>
+#include <sys/types.h>
+#include <thread>
 using namespace std;
 namespace fs = std::filesystem;
 
@@ -21,6 +24,36 @@ int main() {
 //    startOver();
 //    return 0;
 
+    int shmid_out, shmid_in;
+    key_t key_out = 41045, key_in = 41046;
+    void *shm_out, *shm_in;
+
+    if ((shmid_out = shmget(key_out, (1<<20), IPC_CREAT | 0666)) < 0) {
+        perror("shmget");
+        exit(1);
+    }
+
+    if ((shm_out = shmat(shmid_out, nullptr, 0)) == (char *) -1) {
+        perror("shmat");
+        exit(1);
+    }
+
+    if ((shmid_in = shmget(key_in, (1<<20), IPC_CREAT | 0666)) < 0) {
+        perror("shmget");
+        exit(1);
+    }
+
+    if ((shm_in = shmat(shmid_in, nullptr, 0)) == (char *) -1) {
+        perror("shmat");
+        exit(1);
+    }
+    *(char *)shm_in = 0;
+    *(char *)shm_out = 0;
+
+
+
+
+
     DISK.seekg(INDEXNODE);
     DISK.read((char *)&inodes, sizeof(inodes));
 
@@ -31,28 +64,31 @@ int main() {
     DISK.read((char *)users, sizeof(users));
 
 //    char curr_username[24];
-    cout << fmt::format("Log in as: ");
-    while (cin >> curr_username) {
+//    outToSHM(fmt::format("Log in as: "), shm_out);
+    outToSHM("Log in as: ", shm_out);
+    while (inFromSHM(curr_username, shm_in)) {
         for (auto & user : users) {
             if (user.password == 0) continue;
             if (strcmp(curr_username, user.name) == 0) {
-                cout << fmt::format("password: ");
+                outToSHM("password: ", shm_out);
+//                outToSHM(fmt::format("password: "), shm_out);
                 string password;
-                while (cin >> password) {
+                while (inFromSHM(password, shm_in)) {
                     if (hash<string>{}(password) == user.password) {
                         curr_uid = user.uid;
                         goto start;
                     } else {
-                        std::cout << fmt::format("wrong password, please try again: ");
+//                        outToSHM(fmt::format("wrong password, please try again: "), shm_out);
+                        outToSHM("wrong password, please try again: ", shm_out);
                     }
                 }
             }
         }
-        std::cout << fmt::format("user not found, please try again: ");
+        outToSHM(fmt::format("user not found, please try again: "), shm_out);
     }
 
     start:
-    cin.ignore(std::numeric_limits< streamsize >::max(), '\n');
+//    cin.ignore(std::numeric_limits< streamsize >::max(), '\n');
 
     path currDir;
     string cmdline;
@@ -66,7 +102,7 @@ int main() {
         }
     });
     writeIntoDisk.detach();*/
-//    cout << "simdisk " << currDir.dir() << ">" ;
+//    outToSHM("simdisk " << currDir.dir() << ">" , shm_out);
 
     auto writeIntoDisk = []() {
         DISK.seekp(INDEXNODE);
@@ -80,11 +116,11 @@ int main() {
     };
 
 
-    cout << fmt::format("{}@simdisk:{}>", curr_username, currDir.name);
-    while (getline(cin, cmdline)) {
+    outToSHM(fmt::format("{}@simdisk:{}>", curr_username, currDir.name), shm_out);
+    while (inFromSHM(cmdline, shm_in)) {
         auto cmds = split(cmdline);
         if (cmds.empty()) {
-            cout << fmt::format("\n");
+            outToSHM(fmt::format("\n"), shm_out);
             goto out;
             continue;
         }
@@ -93,9 +129,9 @@ int main() {
                 cmds.emplace_back("/");
             auto dest = currDir.find_dest_dir(cmds[1]);
             if (dest.inode_n == -1){
-                std::cout << fmt::format("No directory named {}\n", dest.name);
+                outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
             } else if (!dest.is_directory()) {
-                std::cout << fmt::format("{} not a directory\n", dest.name);
+                outToSHM(fmt::format("{} not a directory\n", dest.name), shm_out);
             }
             else
                 currDir = dest;
@@ -127,25 +163,29 @@ int main() {
 
             if (dirs.empty()) {
                 auto subdirs = currDir.list(params);
-                for (auto &p : subdirs) {
-                    cout << p << endl;
-                }
+                /*for (auto &p : subdirs) {
+                    outToSHM(p << endl, shm_out);
+                }*/
+                outToSHM(subdirs, shm_out);
                 goto out;
             }
 
             for (const auto &dir : dirs) {
                 auto dest = currDir.find_dest_dir(dir);
                 if (!dest.is_directory()) {
-                    std::cout << fmt::format("{} is not a directory\n", dest.name);
+                    outToSHM(fmt::format("{} is not a directory\n", dest.name), shm_out);
                     continue;
                 }
-                cout << fmt::format("{}:\n", dest.name);
+                outToSHM(fmt::format("{}:\n", dest.name), shm_out);
                 auto subdirs = dest.list(params);
-                for (auto &p : subdirs) {
-                    cout << p << endl;
+                /*for (auto &p : subdirs) {
+                    outToSHM(p << endl, shm_out);
                 }
                 if (&dir - &dirs[0] != dirs.size() - 1)
-                    cout << endl;
+                    outToSHM(endl, shm_out);*/
+                outToSHM(subdirs, shm_out);
+                if (&dir != &dirs.back())
+                    outToSHM("\n", shm_out);
             }
         }
 
@@ -155,7 +195,7 @@ int main() {
             cmds[1].erase(pos);
             auto dest = currDir.find_dest_dir(cmds[1]);
             if (dest.inode_n == -1) {
-                std::cout << fmt::format("No directory named {}\n", dest.name);
+                outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
             } else {
                 dest.create_dir(filename);
             }
@@ -165,7 +205,7 @@ int main() {
             if (cmds.size() == 2)
                 cmds.emplace_back();
             if (cmds.size() != 3) {
-                std::cout << "Usage: mkfile <file> \"content\"\n";
+                outToSHM("Usage: mkfile <file> \"content\"\n", shm_out);
                 goto out;
             }
             auto pos = cmds[1].rfind('/') + 1;
@@ -173,7 +213,7 @@ int main() {
             cmds[1].erase(pos);
             auto dest = currDir.find_dest_dir(cmds[1]);
             if (dest.inode_n == -1) {
-                std::cout << fmt::format("No directory named {}\n", dest.name);
+                outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
             } else {
                 dest.create_file(filename, cmds[2]);
             }
@@ -181,21 +221,21 @@ int main() {
 
         else if (cmds[0] == "cat") {
             if (cmds.size() != 2) {
-                std::cout << "Usage: cat <file>\n";
+                outToSHM("Usage: cat <file>\n", shm_out);
                 goto out;
             }
             auto dest = currDir.find_dest_dir(cmds[1]);
             if (dest.inode_n == -1) {
-                std::cout << fmt::format("No directory named {}\n", dest.name);
+                outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
             } else if (!dest.is_file()){
-                std::cout << fmt::format("{} is not a file\n", dest.filename());
+                outToSHM(fmt::format("{} is not a file\n", dest.filename()), shm_out);
             } else
-                cout << dest.get_content() << endl;
+                outToSHM(fmt::format("{}\n", dest.get_content()), shm_out);
         }
 
         else if (cmds[0] == "rm") {
             if (cmds.size() != 2) {
-                std::cout << "Usage: rm <dir>\n";
+                outToSHM("Usage: rm <dir>\n", shm_out);
                 goto out;
             }
 
@@ -204,7 +244,7 @@ int main() {
             cmds[1].erase(pos);
             auto dest = currDir.find_dest_dir(cmds[1]);
             if (dest.inode_n == -1) {
-                std::cout << fmt::format("No directory named {}\n", dest.name);
+                outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
             } else {
                 dest.remove_dir(filename);
             }
@@ -216,7 +256,7 @@ int main() {
 
         else if (cmds[0] == "cp") {
             if (cmds.size() != 3) {
-                std::cout << "Usage: cp <dest> <src>\n";
+                outToSHM("Usage: cp <dest> <src>\n", shm_out);
                 goto out;
             }
             string content;
@@ -231,11 +271,11 @@ int main() {
             } else {
                 auto src = currDir.find_dest_dir(cmds[1]);
                 if (src.inode_n == -1) {
-                    std::cout << fmt::format("{} not found\n", src.name);
+                    outToSHM(fmt::format("{} not found\n", src.name), shm_out);
                     goto out;
                 }
                 if (!src.is_file()) {
-                    std::cout << fmt::format("{} is not a file\n", src.name);
+                    outToSHM(fmt::format("{} is not a file\n", src.name), shm_out);
                     goto out;
                 }
                 content = src.get_content();
@@ -250,12 +290,12 @@ int main() {
                     dest = currDir.find_dest_dir(cmds[2].substr(0, cmds[2].rfind('/') + 1));
                     dest.create_file(filename, content);
                 } else {
-                    std::cout << fmt::format("{} not found\n", dest.name);
+                    outToSHM(fmt::format("{} not found\n", dest.name), shm_out);
                     goto out;
                 }
             } else {
                 if (dest.is_file()) {
-                    std::cout << fmt::format("{} already exits\n", dest.filename());
+                    outToSHM(fmt::format("{} already exits\n", dest.filename()), shm_out);
                     goto out;
                 } else {
                     dest.create_file(filename, content);
@@ -266,14 +306,15 @@ int main() {
         else if (cmds[0] == "addusr") {
 
             if (cmds.size() != 2) {
-                cout << "Usage: addusr <usrname>\n";
+                outToSHM("Usage: addusr <usrname>\n", shm_out);
                 goto out;
             }
 
             if (userNotFull() && !userExists(cmds[1])) {
-                cout << fmt::format("password: ");
+                outToSHM(fmt::format("password: "), shm_out);
                 string password;
-                cin >> password; getchar();
+//                cin >> password; getchar();
+                inFromSHM(password, shm_in);
                 for (uint16_t i = 0; i < USERNUM; ++i) {
                     if (users[i].password == 0) {
                         users[i].uid = i;
@@ -283,13 +324,13 @@ int main() {
                     }
                 }
             } else {
-                std::cout << fmt::format("user already exists\n");
+                outToSHM(fmt::format("user already exists\n"), shm_out);
             }
         }
 
         else if (cmds[0] == "rmusr") {
             if (curr_uid != 0) {
-                std::cout << fmt::format("only root user can delete a user\n");
+                outToSHM(fmt::format("only root user can delete a user\n"), shm_out);
             } else {
                 for (auto &user : users) {
                     if (user.name == cmds[1]) {
@@ -303,25 +344,25 @@ int main() {
 
         else if (cmds[0] == "su") {
             if (cmds.size() != 2) {
-                std::cout << fmt::format("Usage: su <usrname>\n");
+                outToSHM(fmt::format("Usage: su <usrname>\n"), shm_out);
                 goto out;
             }
             if (!userExists(cmds[1])) {
-                std::cout << fmt::format("User {} does not exist\n", cmds[1]);
+                outToSHM(fmt::format("User {} does not exist\n", cmds[1]), shm_out);
                 goto out;
             }
             for (auto &user : users) {
                 if (user.name == cmds[1]) {
-                    cout << fmt::format("password: ");
+                    outToSHM(fmt::format("password: "), shm_out);
                     string password;
-                    while (cin >> password) {
-                        getchar();
+                    while (inFromSHM(password, shm_in)) {
+//                        getchar();
                         if (hash<string>{}(password) == user.password) {
                             strcpy(curr_username, cmds[1].data());
                             curr_uid = user.uid;
                             break;
                         } else {
-                            std::cout << fmt::format("wrong password, please try again: ");
+                            outToSHM(fmt::format("wrong password, please try again: "), shm_out);
                         }
                     }
                 }
@@ -329,22 +370,24 @@ int main() {
         }
 
         else if (cmds[0] == "info") {
-            cout << fmt::format("simdisk by 韩希贤, 201930341045\n"
+            outToSHM(fmt::format("simdisk by 韩希贤, 201930341045\n"
                                 "用户:   {}/{}\n"
                                 "inode: {}/{}\n"
                                 "block: {}/{}\n",
                                 userNum(), USERNUM,
                                 inodeNum(), INODENUM,
-                                blockNum(), BLOCKNUM);
+                                blockNum(), BLOCKNUM), shm_out);
         }
 
         else
-            std::cout << fmt::format("Unknown command \"{}\"\n", cmds[0]);
+            outToSHM(fmt::format("Unknown command \"{}\"\n", cmds[0]), shm_out);
 
         out:
         writeIntoDisk();
-        cout << fmt::format("{}@simdisk:{}>", curr_username, currDir.name);
+        outToSHM(fmt::format("{}@simdisk:{}>", curr_username, currDir.name), shm_out);
     }
+
+    shmctl(shmid_out, IPC_RMID, nullptr);
 
     return 0;
 }

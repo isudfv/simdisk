@@ -6,17 +6,15 @@
 #include <iomanip>
 #include <ctime>
 #include "inode.h"
-#include <fmt/core.h>
-#include <fmt/chrono.h>
+//#include <fmt/core.h>
+//#include <fmt/chrono.h>
+#include "ipc.h"
 using namespace std;
 
 int main()
 {
-//    std::locale::global(std::locale("zh_CN.utf8"));
-    std::time_t t = std::time(nullptr);
-    stringstream fmtedTime;
-    fmtedTime << put_time(localtime(&t), "%a %d %H:%M");
-    cout << fmtedTime.str();
-    cout << endl <<  sizeof(dir_entry) << endl;
-//    cout << fmt::format("{}", put_time(localtime(&t), "%a %d %H:%S"));
+//    vector<string> strs{"123", "abc"};
+//    cout << getIPCString(strs);
+    cout << sizeof(inode) << endl << sizeof(dir_entry);
+    cout << endl << INODENUM << endl;
 }
