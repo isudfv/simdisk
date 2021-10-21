@@ -331,9 +331,11 @@ public:
 
         if (inodes[p.inode_n].i_mode & IS_DIRECTORY && inodes[p.inode_n].i_size > 2){
             outToSHM("Directory not empty, please type yes: \n", shm_out);
+            allout(shm_out);
             std::string get;
-            std::cin >> get;
-            getchar();
+            inFromSHM(get, shm_in);
+//            std::cin >> get;
+//            getchar();
             if (get != "yes")
                 return false;
         }

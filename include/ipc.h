@@ -35,29 +35,42 @@ std::string getIPCString (const std::string &str) {
 template<typename T>
 void outToSHM(const T &a, void *shm) {
     auto get = getIPCString(a);
-    char *src = (char *)shm;
-    while(*(char *)src != 0) src++;
-    strcpy((char *)src, get.c_str());
-    std::cout << "out============\n" << src << "\n==============\n";
+    char *dest = (char *)shm + 1;
+    while(*dest != 0) dest++;
+//    *(char *)shm = 0;
+    strcpy(dest, get.c_str());
+//    *(char *)shm = 1;
+//    std::cout << "out============\n" << dest << "\n==============\n";
+}
+
+void allout(void *shm) {
+    *(char *)shm = 1;
+}
+
+void preparing(void *shm) {
+    *(char *)shm = 0;
 }
 
 bool inFromSHM(char *dest, void *shm) {
     using namespace std::literals;
-    while(*(char *)shm == 0)
-        std::this_thread::sleep_for(0.5s);
-    std::cout << "in============\n" << dest << "\n==============\n";
-    strcpy(dest, (char *)shm);
-    *(char *)shm = 0;
+    char *src = (char *)shm + 1;
+    while(*(char *)shm == 0);
+//        std::this_thread::sleep_for(0.5s);
+    strcpy(dest, src);
+//    std::cout << "in============\n" << dest << "\n==============\n";
+    memset(shm, 0, (1<<20));
     return true;
 }
 
 bool inFromSHM(std::string& dest, void *shm) {
     using namespace std::literals;
-    while(*(char *)shm == 0)
-        std::this_thread::sleep_for(0.5s);
-    dest = std::string((char *)shm);
-    std::cout << "in============\n" << dest << "\n==============\n";
-    *(char *)shm = 0;
+    char *src = (char *)shm + 1;
+    while(*(char *)shm == 0);
+//        std::this_thread::sleep_for(0.5s);
+    dest = std::string((char *)src);
+//    std::cout << "in============\n" << dest << "\n==============\n";
+//    *(char *)shm = 0;
+    memset(shm, 0, (1<<20));
     return true;
 }
 #endif//SIMDISK_IPC_H

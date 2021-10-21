@@ -66,14 +66,18 @@ int main() {
 //    char curr_username[24];
 //    outToSHM(fmt::format("Log in as: "), shm_out);
     outToSHM("Log in as: ", shm_out);
+    allout(shm_out);
     while (inFromSHM(curr_username, shm_in)) {
+        preparing(shm_out);
         for (auto & user : users) {
             if (user.password == 0) continue;
             if (strcmp(curr_username, user.name) == 0) {
                 outToSHM("password: ", shm_out);
 //                outToSHM(fmt::format("password: "), shm_out);
                 string password;
+                allout(shm_out);
                 while (inFromSHM(password, shm_in)) {
+                    preparing(shm_out);
                     if (hash<string>{}(password) == user.password) {
                         curr_uid = user.uid;
                         goto start;
@@ -81,10 +85,12 @@ int main() {
 //                        outToSHM(fmt::format("wrong password, please try again: "), shm_out);
                         outToSHM("wrong password, please try again: ", shm_out);
                     }
+                    allout(shm_out);
                 }
             }
         }
         outToSHM(fmt::format("user not found, please try again: "), shm_out);
+        allout(shm_out);
     }
 
     start:
@@ -117,7 +123,9 @@ int main() {
 
 
     outToSHM(fmt::format("{}@simdisk:{}>", curr_username, currDir.name), shm_out);
+    allout(shm_out);
     while (inFromSHM(cmdline, shm_in)) {
+        preparing(shm_out);
         auto cmds = split(cmdline);
         if (cmds.empty()) {
             outToSHM(fmt::format("\n"), shm_out);
@@ -172,6 +180,11 @@ int main() {
 
             for (const auto &dir : dirs) {
                 auto dest = currDir.find_dest_dir(dir);
+                if (dest.inode_n == -1){
+                    outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
+                    continue;
+                }
+
                 if (!dest.is_directory()) {
                     outToSHM(fmt::format("{} is not a directory\n", dest.name), shm_out);
                     continue;
@@ -314,7 +327,9 @@ int main() {
                 outToSHM(fmt::format("password: "), shm_out);
                 string password;
 //                cin >> password; getchar();
+                allout(shm_out);
                 inFromSHM(password, shm_in);
+                preparing(shm_out);
                 for (uint16_t i = 0; i < USERNUM; ++i) {
                     if (users[i].password == 0) {
                         users[i].uid = i;
@@ -355,7 +370,9 @@ int main() {
                 if (user.name == cmds[1]) {
                     outToSHM(fmt::format("password: "), shm_out);
                     string password;
+                    allout(shm_out);
                     while (inFromSHM(password, shm_in)) {
+                        preparing(shm_out);
 //                        getchar();
                         if (hash<string>{}(password) == user.password) {
                             strcpy(curr_username, cmds[1].data());
@@ -363,6 +380,7 @@ int main() {
                             break;
                         } else {
                             outToSHM(fmt::format("wrong password, please try again: "), shm_out);
+                            allout(shm_out);
                         }
                     }
                 }
@@ -385,6 +403,7 @@ int main() {
         out:
         writeIntoDisk();
         outToSHM(fmt::format("{}@simdisk:{}>", curr_username, currDir.name), shm_out);
+        allout(shm_out);
     }
 
     shmctl(shmid_out, IPC_RMID, nullptr);
