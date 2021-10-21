@@ -10,13 +10,14 @@ using namespace std;
 
 void init( ){
     fstream DISK("./disk", ios::binary | ios::out | ios::in);
-
+    //initialize bitmap
     for (int i = 0; i < 16; ++i) {
         bitmap[i] = UINT64_MAX;
     }
     bitmap[16] = 0x7FFF;
     DISK.seekp(FREEBLOCKS);
     DISK.write((char *)bitmap, sizeof(bitmap[0]) * BITMAPNUM);
+    //initialize inodes
     for (auto & inode : inodes) {
         memset(&inode, 0, sizeof(inode));
     }
@@ -30,7 +31,7 @@ void init( ){
     inodes[0].i_time = std::time(nullptr);
     DISK.seekp(INDEXNODE);
     DISK.write((char *)&inodes[0], sizeof(inode));
-
+    //create root directory
     DISK.seekp(ROOTDIR);
     int temp = 0;
     DISK.write((char *)&temp, sizeof(int));
@@ -39,7 +40,7 @@ void init( ){
     DISK.write((char *)&temp, sizeof(int));
     DISK.write("..", 3);
     DISK.seekp(32 - 4 - 3, ios::cur);
-
+    //create root user
     char rootname[24] = "root";
     uint64_t roothash = hash<string>{}("123");
     uint16_t rootuid = 0;
@@ -52,7 +53,7 @@ void init( ){
 
 int main() {
     ofstream out("./disk", ios::binary);
-
+    //create a file whose size is 100 MiB
     uint64_t block = 0;
     for (int i = 0; i < (100 << 20) / (sizeof(uint64_t)); ++i) {
         out.write((char *)&block, sizeof(uint64_t));

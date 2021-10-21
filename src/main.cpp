@@ -20,7 +20,7 @@ namespace fs = std::filesystem;
 int main() {
 //    startOver();
 //    return 0;
-
+    //to read inode bitmap user from simdisk to memory
     DISK.seekg(INDEXNODE);
     DISK.read((char *)&inodes, sizeof(inodes));
 
@@ -31,6 +31,7 @@ int main() {
     DISK.read((char *)users, sizeof(users));
 
 //    char curr_username[24];
+    //to log in
     cout << fmt::format("Log in as: ");
     while (cin >> curr_username) {
         for (auto & user : users) {
@@ -67,7 +68,7 @@ int main() {
     });
     writeIntoDisk.detach();*/
 //    cout << "simdisk " << currDir.dir() << ">" ;
-
+    //to write changes back to simdisk
     auto writeIntoDisk = []() {
         DISK.seekp(INDEXNODE);
         DISK.write((char *)&inodes, sizeof(inodes));
@@ -102,6 +103,7 @@ int main() {
         }
 
         else if (cmds[0] == "ls") {
+            //to find destination directory
             auto findArgsDir = [&cmds]() {
                 vector<string> dirs;
                 for (int i = 1; i < cmds.size(); ++i) {
@@ -111,7 +113,7 @@ int main() {
                 }
                 return dirs;
             };
-
+            //to get parameters of ls command
             auto findParam = [&cmds]() {
                 string params;
                 for (int i = 1; i < cmds.size(); ++i) {
@@ -124,7 +126,7 @@ int main() {
             auto dirs = findArgsDir();
 
             auto params = findParam();
-
+            //if dir is empty, then dest directory is current directory
             if (dirs.empty()) {
                 auto subdirs = currDir.list(params);
                 for (auto &p : subdirs) {
@@ -133,8 +135,10 @@ int main() {
                 goto out;
             }
 
+            //iterate each directory
             for (const auto &dir : dirs) {
                 auto dest = currDir.find_dest_dir(dir);
+                //dest must be a directory
                 if (!dest.is_directory()) {
                     std::cout << fmt::format("{} is not a directory\n", dest.name);
                     continue;
@@ -168,6 +172,7 @@ int main() {
                 std::cout << "Usage: mkfile <file> \"content\"\n";
                 goto out;
             }
+            //to separate directory from filename
             auto pos = cmds[1].rfind('/') + 1;
             auto filename = cmds[1].substr(pos);
             cmds[1].erase(pos);
@@ -192,11 +197,10 @@ int main() {
             } else
                 cout << dest.get_content() << endl;
         }
-
+        //to append a string to dest file
         else if (cmds[0] == "app") {
             if (cmds.size() != 3) {
-//                outToSHM("Usage: app <file> \"content\"\n", shm_out);
-                cout << "Usage: asdfjaskdjfaskdjf"<< endl;
+                std::cout << "Usage: app <file> \"content\"\n";
                 goto out;
             }
             auto dest = currDir.find_dest_dir(cmds[1]);
@@ -236,6 +240,7 @@ int main() {
             }
             string content;
             string filename;
+            //from host
             if (cmds[1].starts_with("@PC:")) {
                 fs::path src(cmds[1].substr(4));
                 ifstream in(src);
@@ -245,6 +250,7 @@ int main() {
 
                 filename = src.filename().string();
             } else {
+                //from simdisk
                 auto src = currDir.find_dest_dir(cmds[1]);
                 if (src.inode_n == -1) {
                     std::cout << fmt::format("{} not found\n", src.name);
@@ -258,9 +264,9 @@ int main() {
                 filename = src.filename();
             }
 
-
+            //where to put the file
             auto dest = currDir.find_dest_dir(cmds[2]);
-            if (dest.inode_n == -1) {
+            if (dest.inode_n == -1) {// if the last directory is filename
                 if (cmds[2].ends_with(dest.name)) {
                     filename = dest.name;
                     dest = currDir.find_dest_dir(cmds[2].substr(0, cmds[2].rfind('/') + 1));
@@ -326,6 +332,7 @@ int main() {
                 std::cout << fmt::format("User {} does not exist\n", cmds[1]);
                 goto out;
             }
+            //switch to another user
             for (auto &user : users) {
                 if (user.name == cmds[1]) {
                     cout << fmt::format("password: ");
@@ -345,6 +352,7 @@ int main() {
         }
 
         else if (cmds[0] == "info") {
+            //format output
             cout << fmt::format("simdisk by 韩希贤, 201930341045\n"
                                 "用户:   {}/{}\n"
                                 "inode: {}/{}\n"
