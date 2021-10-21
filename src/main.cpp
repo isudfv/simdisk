@@ -193,6 +193,21 @@ int main() {
                 cout << dest.get_content() << endl;
         }
 
+        else if (cmds[0] == "app") {
+            if (cmds.size() != 3) {
+//                outToSHM("Usage: app <file> \"content\"\n", shm_out);
+                cout << "Usage: asdfjaskdjfaskdjf"<< endl;
+                goto out;
+            }
+            auto dest = currDir.find_dest_dir(cmds[1]);
+            if (dest.inode_n == -1) {
+                std::cout << fmt::format("No directory named {}\n", dest.name);
+            } else if (!dest.is_file()){
+                std::cout << fmt::format("{} is not a file\n", dest.filename());
+            } else
+                dest.apppend(cmds[2]);
+        }
+
         else if (cmds[0] == "rm") {
             if (cmds.size() != 2) {
                 std::cout << "Usage: rm <dir>\n";
@@ -227,6 +242,7 @@ int main() {
                 stringstream ss;
                 ss << in.rdbuf();
                 content = ss.str();
+
                 filename = src.filename().string();
             } else {
                 auto src = currDir.find_dest_dir(cmds[1]);

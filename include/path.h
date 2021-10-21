@@ -252,7 +252,7 @@ public:
             inodes[dest_inode].i_zone[pos] = current_block * BLOCKSIZE;
 //            auto seek = current_block;
 //            memcpy(seek, p.data(), p.size());
-            DISK.seekp(inodes[dest_inode].i_zone[pos]);
+            DISK.seekp(inodes[dest_inode].i_zone[pos++]);
             DISK.write(p.data(), p.size());
             inodes[dest_inode].i_size += p.size();
         }
@@ -312,6 +312,40 @@ public:
             content.append(data, std::min(1024u, inodes[inode_n].i_size - i));
         }
         return content;
+    }
+
+    bool apppend(std::string_view content) {
+        if (!is_file())
+            return false;
+        std::vector<std::string_view> chunks;
+
+        uint pos = inodes[inode_n].i_size / BLOCKSIZE;
+        uint off = inodes[inode_n].i_size % BLOCKSIZE;
+
+        uint i = BLOCKSIZE - off;
+        chunks.push_back(content.substr(0, i));
+//        content.remove_prefix(std::min(BLOCKSIZE - off, (uint)content.size()));
+
+//        std::cout << content.size() << std::endl;
+        for (; i < content.size(); i += 1024)
+            chunks.push_back(content.substr(i, 1024));
+
+        for (const auto &item : chunks) {
+            if (off == 0){
+                auto temp = getNewEmptyBlockNo();
+                if (temp == -1){
+                    std::cout << "no block available\n";
+                    return -1;
+                }
+                inodes[inode_n].i_zone[pos] = temp * BLOCKSIZE;
+            }
+            auto seek = inodes[inode_n].i_zone[pos] + off;
+            DISK.seekp(seek);
+            DISK.write(item.data(), item.size());
+            inodes[inode_n].i_size += item.size();
+            pos ++, off = 0;
+        }
+        return true;
     }
 
     bool remove_dir (const std::string& dest) {
