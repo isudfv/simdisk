@@ -21,19 +21,19 @@ struct user{
 const uint16_t USERNUM = 4;
 
 user users[USERNUM];
-
+//to judge if there is enough place for new users
 auto userNotFull () {
     return std::any_of(std::begin(users), std::end(users), [](auto &p){
         return p.password == 0;
     });
 };
-
+//to judge if a user exits
 auto userExists (const std::string &name) {
     return std::any_of(std::begin(users), std::end(users), [&name](auto &p){
         return p.name == name;
     });
 };
-
+//to count all the users
 uint16_t userNum () {
     uint16_t tot = 0;
     for (auto &item : users) {

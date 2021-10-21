@@ -38,7 +38,7 @@ const uint ROOTDIR = INDEXNODE + (1 << 20);
 using inode_mode_t = uint16_t;
 const inode_mode_t IS_DIRECTORY = 0x0200;
 const inode_mode_t IS_FILE = 0x0400;
-
+const inode_mode_t IS_WRITTING = 0x800;
 
 struct inode{
     uint16_t i_mode;
@@ -87,7 +87,7 @@ inline std::fstream DISK("./disk", std::ios::in | std::ios::out | std::ios::bina
 inline uint16_t curr_uid;
 
 inline char curr_username[24];
-
+//to get an unused inode
 inode_t getNewInode() {
     for (uint i = 0; i < INODENUM; ++i) {
         if (inodes[i].i_size == 0)
@@ -95,14 +95,14 @@ inode_t getNewInode() {
     }
     return -1;
 }
-
+//to count used inodes
 inode_t inodeNum() {
     inode_t tot = 0;
     for (auto &item : inodes)
         tot += (item.i_size != 0);
     return tot;
 }
-
+//to get an unused block
 uint32_t getNewEmptyBlockNo() {
     uint i;
     for (i = 0; i < BITMAPNUM && 0xFFFFFFFFFFFFFFFF == bitmap[i]; ++i);
@@ -112,7 +112,7 @@ uint32_t getNewEmptyBlockNo() {
     const uint32_t firstZeroBit = bitInWord ? i * sizeof(*bitmap) * 8 + bitInWord - 1 : -1;
     return firstZeroBit ;
 }
-
+//to count used blocks
 uint32_t blockNum() {
     uint32_t tot = 0;
     for (auto n : bitmap) {
@@ -123,7 +123,7 @@ uint32_t blockNum() {
     }
     return tot;
 }
-
+//to split a string with regex
 std::vector<std::string> split(const std::string& s,
                                const std::regex& re = std::regex("[^\\s \"]+|\"([^\"]*)\"")) {
     std::vector<std::string> cmds;
@@ -136,13 +136,13 @@ std::vector<std::string> split(const std::string& s,
              });
     return cmds;
 }
-
+//to distinguish a file from directory to regular file
 char file_type(inode_mode_t p) {
     if (p & IS_DIRECTORY) return 'd';
     else if (p & IS_FILE) return 'f';
     else return '-';
 }
-
+//to output the permissions of a file
 std::string rwx(inode_mode_t p) {
     using std::filesystem::perms;
     auto check = [p](perms bit, char c) {
@@ -158,7 +158,7 @@ std::string rwx(inode_mode_t p) {
             check(perms::others_write, 'w'),
             check(perms::others_exec , 'x')};
 }
-
+//to format time, for example [Thu 21 18:07]
 std::string time_format(time_t t) {
     std::stringstream fmtedTime;
     fmtedTime << std::put_time(localtime(&t), "%a %d %H:%M");
