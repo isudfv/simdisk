@@ -43,6 +43,11 @@ void outToSHM(const T &a, void *shm) {
 //    std::cout << "out============\n" << dest << "\n==============\n";
 }
 
+void outToSHM(void *src, void *shm, int n) {
+    shm = (char *)shm + 1;
+    memcpy(shm, src, n);
+}
+
 void allout(void *shm) {
     *(char *)shm = 1;
 }
@@ -51,12 +56,25 @@ void preparing(void *shm) {
     *(char *)shm = 0;
 }
 
+bool inFromSHM(void *dest, void *shm, int n) {
+    using namespace std::literals;
+    char *src = (char *)shm + 1;
+    while(*(char *)shm == 0);
+    //        std::this_thread::sleep_for(0.5s);
+    memcpy(dest, src, n);
+    //    memcpy(dest, src, n);
+    //    std::cout << "in============\n" << dest << "\n==============\n";
+    memset(shm, 0, (1<<20));
+    return true;
+}
+
 bool inFromSHM(char *dest, void *shm) {
     using namespace std::literals;
     char *src = (char *)shm + 1;
     while(*(char *)shm == 0);
 //        std::this_thread::sleep_for(0.5s);
     strcpy(dest, src);
+//    memcpy(dest, src, n);
 //    std::cout << "in============\n" << dest << "\n==============\n";
     memset(shm, 0, (1<<20));
     return true;

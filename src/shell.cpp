@@ -3,8 +3,8 @@
 */
 #include <cstring>
 #include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -18,6 +18,8 @@
 using namespace std;
 int main()
 {
+//    cout << getpid() << endl;
+//    getchar();
     int shmid_out, shmid_in;
     key_t key_out = 41046, key_in = 41045;
     void *shm_out, *shm_in;
@@ -50,6 +52,32 @@ int main()
         exit(1);
     }
 
+    key_t shms[2] = {getpid(), getpid() + 1};
+    preparing(shm_out);
+    outToSHM(shms, shm_out, sizeof(shms));
+    allout(shm_out);
+    sleep(1);
+//    getchar();
+
+    if ((shmid_out = shmget(shms[1], (1<<20), 0666)) < 0) {
+        perror("shmget");
+        exit(1);
+    }
+
+    if ((shm_out = shmat(shmid_out, nullptr, 0)) == (char *) -1) {
+        perror("shmat");
+        exit(1);
+    }
+
+    if ((shmid_in = shmget(shms[0], (1<<20), 0666)) < 0) {
+        perror("shmget");
+        exit(1);
+    }
+
+    if ((shm_in = shmat(shmid_in, nullptr, 0)) == (char *) -1) {
+        perror("shmat");
+        exit(1);
+    }
    /*
     * Now read what the server put in the memory.
     */

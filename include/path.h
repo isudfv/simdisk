@@ -315,6 +315,13 @@ public:
         return content;
     }
 
+    bool apppend(std::string_view) {
+        if (!is_file())
+            return false;
+
+        return true;
+    }
+
     bool remove_dir (const std::string& dest) {
         auto p = find_dir_entry(dest);
 
