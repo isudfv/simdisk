@@ -14,7 +14,7 @@ add_executable(simdisk src/main.cpp)
 #set_target_properties(simdisk PROPERTIES COMPILE_OPTIONS "-m32")
 add_executable(test src/test.cpp)
 #
-add_executable(server src/server.cpp)
+#add_executable(server src/server.cpp)
 #
 add_executable(shell src/shell.cpp)
 
