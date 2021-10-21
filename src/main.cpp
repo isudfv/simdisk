@@ -82,14 +82,17 @@ while (inFromSHM(shms, shm_in, sizeof(shms))) {
     }
 
     //to read inode bitmap user from simdisk to memory
-    DISK.seekg(INDEXNODE);
-    DISK.read((char *) &inodes, sizeof(inodes));
+    auto readFromDisk = []() {
+        DISK.seekg(INDEXNODE);
+        DISK.read((char *) &inodes, sizeof(inodes));
 
-    DISK.seekg(FREEBLOCKS);
-    DISK.read((char *) bitmap, sizeof(bitmap));
+        DISK.seekg(FREEBLOCKS);
+        DISK.read((char *) bitmap, sizeof(bitmap));
 
-    DISK.seekg(USERS);
-    DISK.read((char *) users, sizeof(users));
+        DISK.seekg(USERS);
+        DISK.read((char *) users, sizeof(users));
+    };
+    readFromDisk();
 
     //    char curr_username[24];
     //    outToSHM(fmt::format("Log in as: "), shm_out);
@@ -144,6 +147,7 @@ while (inFromSHM(shms, shm_in, sizeof(shms))) {
     outToSHM(fmt::format("{}@simdisk:{}>", curr_username, currDir.name), shm_out);
     allout(shm_out);
     while (inFromSHM(cmdline, shm_in)) {
+        readFromDisk();
         preparing(shm_out);
         auto cmds = split(cmdline);
         if (cmds.empty()) {
@@ -278,6 +282,8 @@ while (inFromSHM(shms, shm_in, sizeof(shms))) {
                 outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
             } else if (!dest.is_file()) {
                 outToSHM(fmt::format("{} is not a file\n", dest.filename()), shm_out);
+            } else if (inodes[dest.inode_n].i_mode & IS_WRITTING) {
+                outToSHM("The File Is Being Used\n", shm_out);
             } else {
                 std::string content;
                 outToSHM("content: ", shm_out);
@@ -288,6 +294,7 @@ while (inFromSHM(shms, shm_in, sizeof(shms))) {
                 preparing(shm_out);
                 dest.apppend(content);
                 inodes[dest.inode_n].i_mode &= (~IS_WRITTING);
+                writeIntoDisk();
             }
         }
 

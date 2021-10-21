@@ -63,7 +63,7 @@ bool inFromSHM(void *dest, void *shm, int n) {
     //        std::this_thread::sleep_for(0.5s);
     memcpy(dest, src, n);
     //    memcpy(dest, src, n);
-    //    std::cout << "in============\n" << dest << "\n==============\n";
+//        std::cout << "in============\n" << dest << "\n==============\n";
     memset(shm, 0, (1<<20));
     return true;
 }
