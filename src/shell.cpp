@@ -22,14 +22,7 @@ int main()
     key_t key_out = 41046, key_in = 41045;
     void *shm_out, *shm_in;
 
-   /*
-    * We need to get the segment named
-    * "5678", created by the server.
-    */
-
-   /*
-    * Locate the segment.
-    */
+   // to connect to simdisk
     if ((shmid_out = shmget(key_out, (1<<20), 0666)) < 0) {
         perror("shmget");
         exit(1);

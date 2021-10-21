@@ -25,7 +25,7 @@ int main() {
 //    return 0;
 
 
-
+    //to create an area of shared memory that takes users for logging in
     if ((shmid_out = shmget(key_out, (1<<20), IPC_CREAT | 0666)) < 0) {
         perror("shmget");
         exit(1);
@@ -65,6 +65,7 @@ int main() {
 
 //    char curr_username[24];
 //    outToSHM(fmt::format("Log in as: "), shm_out);
+    //to log in
     outToSHM("Log in as: ", shm_out);
     allout(shm_out);
     while (inFromSHM(curr_username, shm_in)) {
@@ -98,18 +99,7 @@ int main() {
 
     path currDir;
     string cmdline;
-
-    /*std::thread writeIntoDisk([](){
-        locker.lock();
-        while (true){
-            locker.lock();
-            DISK.seekp(0);
-            DISK.write(startPos, 100<<20);
-        }
-    });
-    writeIntoDisk.detach();*/
-//    outToSHM("simdisk " << currDir.dir() << ">" , shm_out);
-
+    //to write changes back to simdisk
     auto writeIntoDisk = []() {
         DISK.seekp(INDEXNODE);
         DISK.write((char *)&inodes, sizeof(inodes));
@@ -122,6 +112,7 @@ int main() {
     };
 
 
+    //take in commands
     outToSHM(fmt::format("{}@simdisk:{}>", curr_username, currDir.name), shm_out);
     allout(shm_out);
     while (inFromSHM(cmdline, shm_in)) {
@@ -132,20 +123,21 @@ int main() {
             goto out;
             continue;
         }
+
         if (cmds[0] == "cd") {
             if (cmds.size() == 1)
                 cmds.emplace_back("/");
             auto dest = currDir.find_dest_dir(cmds[1]);
-            if (dest.inode_n == -1){
+            if (dest.inode_n == -1) {
                 outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
             } else if (!dest.is_directory()) {
                 outToSHM(fmt::format("{} not a directory\n", dest.name), shm_out);
-            }
-            else
+            } else
                 currDir = dest;
         }
 
         else if (cmds[0] == "ls") {
+            //to find destination directory
             auto findArgsDir = [&cmds]() {
                 vector<string> dirs;
                 for (int i = 1; i < cmds.size(); ++i) {
@@ -155,7 +147,7 @@ int main() {
                 }
                 return dirs;
             };
-
+            //to get parameters of ls command
             auto findParam = [&cmds]() {
                 string params;
                 for (int i = 1; i < cmds.size(); ++i) {
@@ -168,7 +160,7 @@ int main() {
             auto dirs = findArgsDir();
 
             auto params = findParam();
-
+            //if dir is empty, then dest directory is current directory
             if (dirs.empty()) {
                 auto subdirs = currDir.list(params);
                 /*for (auto &p : subdirs) {
@@ -178,13 +170,14 @@ int main() {
                 goto out;
             }
 
+            //iterate each directory
             for (const auto &dir : dirs) {
                 auto dest = currDir.find_dest_dir(dir);
-                if (dest.inode_n == -1){
+                if (dest.inode_n == -1) {
                     outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
                     continue;
                 }
-
+                //dest must be a directory
                 if (!dest.is_directory()) {
                     outToSHM(fmt::format("{} is not a directory\n", dest.name), shm_out);
                     continue;
@@ -221,6 +214,7 @@ int main() {
                 outToSHM("Usage: mkfile <file> \"content\"\n", shm_out);
                 goto out;
             }
+            //to separate directory from filename
             auto pos = cmds[1].rfind('/') + 1;
             auto filename = cmds[1].substr(pos);
             cmds[1].erase(pos);
@@ -240,10 +234,33 @@ int main() {
             auto dest = currDir.find_dest_dir(cmds[1]);
             if (dest.inode_n == -1) {
                 outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
-            } else if (!dest.is_file()){
+            } else if (!dest.is_file()) {
                 outToSHM(fmt::format("{} is not a file\n", dest.filename()), shm_out);
             } else
                 outToSHM(fmt::format("{}\n", dest.get_content()), shm_out);
+        }
+        //to append a string to dest file
+        else if (cmds[0] == "app") {
+            if (cmds.size() != 2) {
+                outToSHM("Usage: app <file> \"content\"\n", shm_out);
+                goto out;
+            }
+            auto dest = currDir.find_dest_dir(cmds[1]);
+            if (dest.inode_n == -1) {
+                outToSHM(fmt::format("No directory named {}\n", dest.name), shm_out);
+            } else if (!dest.is_file()) {
+                outToSHM(fmt::format("{} is not a file\n", dest.filename()), shm_out);
+            } else {
+                std::string content;
+                outToSHM("content: ", shm_out);
+                allout(shm_out);
+//                inodes[dest.inode_n].i_mode |= IS_WRITTING;
+                writeIntoDisk();
+                inFromSHM(content, shm_in);
+                preparing(shm_out);
+                dest.apppend(content);
+//                inodes[dest.inode_n].i_mode &= (~IS_WRITTING);
+            }
         }
 
         else if (cmds[0] == "rm") {
@@ -274,6 +291,7 @@ int main() {
             }
             string content;
             string filename;
+            //from host
             if (cmds[1].starts_with("@PC:")) {
                 fs::path src(cmds[1].substr(4));
                 ifstream in(src);
@@ -282,6 +300,7 @@ int main() {
                 content = ss.str();
                 filename = src.filename().string();
             } else {
+                //from simdisk
                 auto src = currDir.find_dest_dir(cmds[1]);
                 if (src.inode_n == -1) {
                     outToSHM(fmt::format("{} not found\n", src.name), shm_out);
@@ -295,9 +314,9 @@ int main() {
                 filename = src.filename();
             }
 
-
+            //where to put the file
             auto dest = currDir.find_dest_dir(cmds[2]);
-            if (dest.inode_n == -1) {
+            if (dest.inode_n == -1) {// if the last directory is filename
                 if (cmds[2].ends_with(dest.name)) {
                     filename = dest.name;
                     dest = currDir.find_dest_dir(cmds[2].substr(0, cmds[2].rfind('/') + 1));
@@ -333,6 +352,7 @@ int main() {
                 for (uint16_t i = 0; i < USERNUM; ++i) {
                     if (users[i].password == 0) {
                         users[i].uid = i;
+                        //hash user password
                         users[i].password = hash<string>{}(password);
                         strcpy(users[i].name, cmds[1].c_str());
                         break;
@@ -366,6 +386,7 @@ int main() {
                 outToSHM(fmt::format("User {} does not exist\n", cmds[1]), shm_out);
                 goto out;
             }
+            //switch to another user
             for (auto &user : users) {
                 if (user.name == cmds[1]) {
                     outToSHM(fmt::format("password: "), shm_out);
@@ -388,6 +409,7 @@ int main() {
         }
 
         else if (cmds[0] == "info") {
+            //format output
             outToSHM(fmt::format("simdisk by 韩希贤, 201930341045\n"
                                 "用户:   {}/{}\n"
                                 "inode: {}/{}\n"
@@ -405,7 +427,7 @@ int main() {
         outToSHM(fmt::format("{}@simdisk:{}>", curr_username, currDir.name), shm_out);
         allout(shm_out);
     }
-
+    //to free sharen memory
     shmctl(shmid_out, IPC_RMID, nullptr);
 
     return 0;
