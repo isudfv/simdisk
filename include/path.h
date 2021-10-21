@@ -5,14 +5,15 @@
 #ifndef SIMDISK_PATH_H
 #define SIMDISK_PATH_H
 #include "inode.h"
+#include "ipc.h"
+#include "users.h"
+#include <algorithm>
+#include <fmt/core.h>
 #include <fstream>
 #include <iostream>
 #include <string_view>
-#include <algorithm>
 #include <utility>
 #include <vector>
-#include <fmt/core.h>
-#include "users.h"
 class path{
 public:
     path(): name("/"), inode_n(0) {
@@ -48,9 +49,9 @@ public:
         int pos = 0;
         uint destInode;
 //        DISK.seekg(inodes[inode_n].i_zone[pos++]);
-//        std::cout << inode_n << " " << &inodes[inode_n].i_zone[pos++] << std::endl;
+//        outToSHM(inode_n << " " << &inodes[inode_n].i_zone[pos++] << std::endl, shm_out);
         auto seek = (inodes[inode_n].i_zone[pos++]);
-//        std::cout << (void *)seek << std::endl;
+//        outToSHM((void *)seek << std::endl, shm_out);
         char temp[28];
         DISK.seekg(seek);
         for (int i = 0; i < inodes[inode_n].i_size; ++i) {
@@ -59,19 +60,19 @@ public:
             DISK.read((char *)&src, sizeof(dir_entry));
 //            DISK.read((char *)&destInode, sizeof(int));
 //            DISK.read(dest, 32 - 4);
-//            std::cout << *(int *)seek << std::endl;
+//            outToSHM(*(int *)seek << std::endl, shm_out);
 //            std::string(seek + 4, seek + 32);
 //            dir_entry dest{};
 //            memcpy(&dest, seek, sizeof(dir_entry));
-//            std::cout << "HereHere: " << seek << std::endl;
+//            outToSHM("HereHere: " << seek << std::endl, shm_out);
             all.push_back(src);
 //            all.emplace_back(*(int *)seek, std::string((char *)seek + 4, (char *)seek + 32));
 //            seek ++;
-//            std::cout << all.back().first << " " << all.back().second << std::endl;
+//            outToSHM(all.back().first << " " << all.back().second << std::endl, shm_out);
             if ((i+1) * sizeof(dir_entry) % BLOCKSIZE == 0)
                 seek = (inodes[inode_n].i_zone[pos++]);
         }
-//        std::cout << "END \n";
+//        outToSHM("END \n", shm_out);
         return all;
     }
 
@@ -137,7 +138,7 @@ public:
         auto dirs = split(dest, std::regex("[^\\/]+"));
         for (const auto &p : dirs) {
             if (!curr.is_directory()) {
-                std::cout << curr.name << " not a directory\n";
+                outToSHM(fmt::format("{} not a directory\n", curr.name), shm_out);
                 break;
             }
             auto seek = curr.find_dir_entry(p);
@@ -169,7 +170,7 @@ public:
 
     inode_t create_dir_entry(const std::string& dest, inode_t dest_inode = -1, inode_mode_t mode = IS_DIRECTORY) {
         if (find(dest) != -1){
-            std::cout << "dir already exists\n";
+            outToSHM("dir already exists\n", shm_out);
             return -1;
         }
         inode &thisInode = inodes[inode_n];
@@ -180,7 +181,7 @@ public:
         if (off == 0){
             auto temp = getNewEmptyBlockNo();
             if (temp == -1){
-                std::cout << "no block available\n";
+                outToSHM("no block available\n", shm_out);
                 return -1;
             }
             thisInode.i_zone[pos] = temp * BLOCKSIZE;
@@ -189,14 +190,14 @@ public:
         //get new inode
         dest_inode = dest_inode == -1 ? getNewInode() : dest_inode;
         if (dest_inode == -1) {
-            std::cout << "no inode available\n";
+            outToSHM("no inode available\n", shm_out);
             return -1;
         }
 
         dir_entry newDir{dest_inode, dest.data()};
 
         auto seek = (thisInode.i_zone[pos] + off);
-//        std::cout << seek << std::endl;
+//        outToSHM(seek << std::endl, shm_out);
 //        *seek = newDir;
         DISK.seekp(seek);
         DISK.write((char *)&newDir, sizeof(newDir));
@@ -224,7 +225,7 @@ public:
             return false;
         }
         path sub = *this / dest;
-//        std::cout << "Here: " << inode_n << " " << "Sub: " << sub.inode_n << std::endl;
+//        outToSHM("Here: " << inode_n << " " << "Sub: " << sub.inode_n << std::endl, shm_out);
         sub.create_dir_entry(".", dest_inode);
         sub.create_dir_entry("..", inode_n);
         return true;
@@ -246,7 +247,7 @@ public:
         for (const auto &p : chunks) {
             current_block = getNewEmptyBlockNo();
             if (current_block == -1) {
-                std::cout << "no block available\n";
+                outToSHM("no block available\n", shm_out);
                 return false;
             }
             inodes[dest_inode].i_zone[pos] = current_block * BLOCKSIZE;
@@ -264,7 +265,7 @@ public:
         for (uint i = 0, pos = 0; i < inodes[src_inode].i_size; i += BLOCKSIZE) {
             auto current_block = getNewEmptyBlockNo();
             if (current_block == -1) {
-                std::cout << "no block available\n";
+                outToSHM("no block available\n", shm_out);
                 return false;
             }
             inodes[dest_inode].i_zone[pos] = current_block * BLOCKSIZE;
@@ -280,7 +281,7 @@ public:
     std::string get_content(const std::string &dest) {
         inode_t dest_inode = find(dest);
         if (dest_inode == -1) {
-            std::cout << "File not found\n";
+            outToSHM("File not found\n", shm_out);
             return {};
         }
         std::string content;
@@ -318,18 +319,18 @@ public:
         auto p = find_dir_entry(dest);
 
         if (p.inode_n == -1) {
-            std::cout << "dir not found\n";
+            outToSHM("dir not found\n", shm_out);
             return false;
         }
 
         if (inodes[p.inode_n].i_uid != curr_uid && curr_uid != 0 &&
             (inodes[p.inode_n].i_mode & (2)) == 0) {
-            std::cout << "Permission denied\n";
+            outToSHM("Permission denied\n", shm_out);
             return false;
         }
 
         if (inodes[p.inode_n].i_mode & IS_DIRECTORY && inodes[p.inode_n].i_size > 2){
-            std::cout << "Directory not empty, please type yes: \n";
+            outToSHM("Directory not empty, please type yes: \n", shm_out);
             std::string get;
             std::cin >> get;
             getchar();

@@ -9,6 +9,10 @@
 #include <chrono>
 #include <thread>
 
+int shmid_out, shmid_in;
+key_t key_out = 41045, key_in = 41046;
+void *shm_out, *shm_in;
+
 std::string getIPCString (const std::vector<std::string> &strs) {
     std::string str;
     for (const auto &item : strs) {
@@ -31,18 +35,18 @@ std::string getIPCString (const std::string &str) {
 template<typename T>
 void outToSHM(const T &a, void *shm) {
     auto get = getIPCString(a);
-//    std::cout << "out============\n" << get << "\n=================\n";
     char *src = (char *)shm;
     while(*(char *)src != 0) src++;
     strcpy((char *)src, get.c_str());
+    std::cout << "out============\n" << src << "\n==============\n";
 }
 
 bool inFromSHM(char *dest, void *shm) {
     using namespace std::literals;
     while(*(char *)shm == 0)
         std::this_thread::sleep_for(0.5s);
+    std::cout << "in============\n" << dest << "\n==============\n";
     strcpy(dest, (char *)shm);
-//    std::cout << "in============\n" << dest << "\n==============\n";
     *(char *)shm = 0;
     return true;
 }
@@ -52,7 +56,7 @@ bool inFromSHM(std::string& dest, void *shm) {
     while(*(char *)shm == 0)
         std::this_thread::sleep_for(0.5s);
     dest = std::string((char *)shm);
-//    std::cout << "in============\n" << dest << "\n==============\n";
+    std::cout << "in============\n" << dest << "\n==============\n";
     *(char *)shm = 0;
     return true;
 }

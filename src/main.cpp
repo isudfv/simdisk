@@ -24,9 +24,7 @@ int main() {
 //    startOver();
 //    return 0;
 
-    int shmid_out, shmid_in;
-    key_t key_out = 41045, key_in = 41046;
-    void *shm_out, *shm_in;
+
 
     if ((shmid_out = shmget(key_out, (1<<20), IPC_CREAT | 0666)) < 0) {
         perror("shmget");
@@ -47,8 +45,10 @@ int main() {
         perror("shmat");
         exit(1);
     }
-    *(char *)shm_in = 0;
-    *(char *)shm_out = 0;
+    memset(shm_out, 0, (1<<20));
+    memset(shm_in, 0, (1<<20));
+//    *(char *)shm_in = 0;
+//    *(char *)shm_out = 0;
 
 
 

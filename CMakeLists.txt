@@ -16,7 +16,7 @@ add_executable(test src/test.cpp)
 #
 add_executable(server src/server.cpp)
 #
-add_executable(client src/client.cpp)
+add_executable(client src/shell.cpp)
 
 add_executable(init src/init.cpp)
 #set_target_properties(test PROPERTIES COMPILE_OPTIONS "-m32" LINK_FLAGS "-m32")
