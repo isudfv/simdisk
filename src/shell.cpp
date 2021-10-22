@@ -23,6 +23,7 @@ int main()
     void *shm_out, *shm_in;
 
    // to connect to simdisk
+    sleep(1);
     if ((shmid_out = shmget(key_out, (1<<20), 0666)) < 0) {
         perror("shmget");
         exit(1);
