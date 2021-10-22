@@ -54,12 +54,12 @@ int main() {
     key_t shms[2];
 //fork a process to deal with a new user
 while (inFromSHM(shms, shm_in, sizeof(shms))) {
-    cout << "received\n";
+//    cout << "received\n";
     pid_t pid = fork();
     if (pid != 0) continue;
 //    if (fork() == 0) continue;
-    cout << "into child process\n";
-    cout << shms[0] << endl << shms[1] << endl;
+//    cout << "into child process\n";
+//    cout << shms[0] << endl << shms[1] << endl;
     //create shared memory to transmitting commands and output
     if ((shmid_out = shmget(shms[0], (1 << 20), IPC_CREAT | 0666)) < 0) {
         perror("shmget");
